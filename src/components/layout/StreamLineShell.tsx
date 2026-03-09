@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { LifeBuoy, Shield, Home, Menu, X } from "lucide-react";
+import { LifeBuoy, Shield, Home, Menu, X, Headset } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
@@ -8,6 +8,7 @@ const navItems = [
   { label: "Home", to: "/", icon: Home },
   { label: "Support", to: "/streamline/edu/support", icon: LifeBuoy },
   { label: "Admin", to: "/streamline/admin/support", icon: Shield },
+  { label: "Console", to: "/support-console", icon: Headset },
 ];
 
 export default function StreamLineShell() {

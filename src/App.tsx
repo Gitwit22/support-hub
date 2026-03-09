@@ -8,6 +8,7 @@ import NotFound from "./pages/NotFound.tsx";
 import StreamLineShell from "./components/layout/StreamLineShell.tsx";
 import EduSupportPage from "./pages/EduSupport.tsx";
 import AdminSupportPage from "./pages/AdminSupport.tsx";
+import SupportConsolePage from "./pages/SupportConsole.tsx";
 
 const queryClient = new QueryClient();
 
@@ -22,6 +23,7 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/streamline/edu/support" element={<EduSupportPage />} />
             <Route path="/streamline/admin/support" element={<AdminSupportPage />} />
+            <Route path="/support-console" element={<SupportConsolePage />} />
           </Route>
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
