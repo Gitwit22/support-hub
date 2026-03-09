@@ -46,7 +46,7 @@ export function ResponseInbox({ tickets, onSelect, loading }: ResponseInboxProps
             </div>
             {lastMsg && (
               <p className="mt-2 text-sm text-muted-foreground line-clamp-1">
-                <span className="font-medium">{lastMsg.authorName}:</span> {lastMsg.content}
+                <span className="font-medium">{lastMsg.authorName}:</span> {lastMsg.message}
               </p>
             )}
             <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">

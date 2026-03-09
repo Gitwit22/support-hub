@@ -24,12 +24,12 @@ export function TicketDetail({ ticket, onBack, onReply, onUpdate, onClose, isAdm
   const [replyContent, setReplyContent] = useState("");
   const [isInternal, setIsInternal] = useState(false);
   const [sending, setSending] = useState(false);
-  const [assignTo, setAssignTo] = useState(ticket.assignedTo || "");
+  const [assignTo, setAssignTo] = useState(ticket.assignedToName || "");
 
   const handleReply = async () => {
     if (!replyContent.trim()) return;
     setSending(true);
-    await onReply(ticket.id, { content: replyContent.trim(), isInternalNote: isInternal });
+    await onReply(ticket.id, { message: replyContent.trim(), type: isInternal ? "internal_note" : "reply" });
     setReplyContent("");
     setIsInternal(false);
     setSending(false);
@@ -40,7 +40,7 @@ export function TicketDetail({ ticket, onBack, onReply, onUpdate, onClose, isAdm
   };
 
   const handleAssign = async () => {
-    if (onUpdate && assignTo.trim()) await onUpdate(ticket.id, { assignedTo: assignTo.trim() });
+    if (onUpdate && assignTo.trim()) await onUpdate(ticket.id, { assignedToName: assignTo.trim() });
   };
 
   return (
@@ -53,7 +53,7 @@ export function TicketDetail({ ticket, onBack, onReply, onUpdate, onClose, isAdm
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold text-foreground">{ticket.title}</h2>
-            <p className="mt-1 text-sm text-muted-foreground">{ticket.id} · {ticket.school}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{ticket.ticketNumber} · {ticket.schoolId || ticket.orgId || ticket.product}</p>
           </div>
           <div className="flex items-center gap-2">
             <StatusBadge status={ticket.status} />
@@ -68,7 +68,7 @@ export function TicketDetail({ ticket, onBack, onReply, onUpdate, onClose, isAdm
       <div className="grid grid-cols-2 gap-4 rounded-lg border border-border bg-card p-4 sm:grid-cols-4">
         <div className="space-y-1">
           <p className="text-xs text-muted-foreground flex items-center gap-1"><User className="h-3 w-3" /> Submitted by</p>
-          <p className="text-sm font-medium text-card-foreground">{ticket.submittedBy}</p>
+          <p className="text-sm font-medium text-card-foreground">{ticket.userName}</p>
         </div>
         <div className="space-y-1">
           <p className="text-xs text-muted-foreground">Priority</p>
@@ -127,18 +127,21 @@ export function TicketDetail({ ticket, onBack, onReply, onUpdate, onClose, isAdm
           <p className="text-sm text-muted-foreground py-4 text-center">No messages yet.</p>
         )}
         {ticket.messages.map(msg => (
-          <div key={msg.id} className={`rounded-lg border p-4 ${msg.isInternalNote ? "border-warning/30 bg-warning/5" : "border-border bg-card"}`}>
+          <div key={msg.id} className={`rounded-lg border p-4 ${msg.type === "internal_note" ? "border-warning/30 bg-warning/5" : msg.type === "status_change" ? "border-info/30 bg-info/5" : "border-border bg-card"}`}>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-sm font-semibold text-card-foreground">{msg.authorName}</span>
               <span className="text-xs text-muted-foreground capitalize">{msg.authorRole.replace("_", " ")}</span>
-              {msg.isInternalNote && (
+              {msg.type === "internal_note" && (
                 <span className="flex items-center gap-1 text-xs text-warning font-medium">
                   <Lock className="h-3 w-3" /> Internal Note
                 </span>
               )}
+              {msg.type === "status_change" && (
+                <span className="text-xs text-info font-medium">Status Change</span>
+              )}
               <span className="ml-auto text-xs text-muted-foreground">{format(new Date(msg.createdAt), "MMM d, h:mm a")}</span>
             </div>
-            <p className="text-sm text-card-foreground whitespace-pre-wrap">{msg.content}</p>
+            <p className="text-sm text-card-foreground whitespace-pre-wrap">{msg.message}</p>
           </div>
         ))}
       </div>

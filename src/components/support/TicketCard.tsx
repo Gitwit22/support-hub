@@ -25,9 +25,9 @@ export function TicketCard({ ticket, onClick, showSchool }: TicketCardProps) {
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
         <PriorityBadge priority={ticket.priority} />
-        {showSchool && <span>{ticket.school}</span>}
+        {showSchool && <span>{ticket.schoolId || ticket.orgId}</span>}
         <span className="capitalize">{ticket.category.replace("_", " ")}</span>
-        {ticket.assignedTo && <span>→ {ticket.assignedTo}</span>}
+        {ticket.assignedToName && <span>→ {ticket.assignedToName}</span>}
         <span className="ml-auto flex items-center gap-1">
           <MessageSquare className="h-3 w-3" />
           {ticket.messages.length}

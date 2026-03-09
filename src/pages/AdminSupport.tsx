@@ -2,8 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { TicketList } from "@/components/support/TicketList";
 import { TicketDetail } from "@/components/support/TicketDetail";
 import { SupportFilters } from "@/components/support/SupportFilters";
-import { listTickets, getTicket, updateTicket, addTicketMessage, closeTicket } from "@/lib/api/eduSupport";
-import { setCurrentUserKey } from "@/lib/api/eduSupport";
+import { listTickets, getTicket, updateTicket, addTicketMessage, closeTicket, setCurrentUserKey } from "@/lib/api/support";
 import type { Ticket, TicketFilters } from "@/lib/types/support";
 
 export default function AdminSupportPage() {
