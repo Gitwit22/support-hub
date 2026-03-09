@@ -2,40 +2,72 @@ export type TicketStatus = "open" | "in_progress" | "waiting" | "resolved" | "cl
 export type TicketPriority = "low" | "medium" | "high" | "urgent";
 export type TicketCategory = "help_request" | "troubleshooting" | "account_access" | "incident" | "room_issue" | "behavior" | "technical" | "other";
 export type UserRole = "teacher" | "school_admin" | "principal" | "district_staff" | "platform_admin" | "student";
+export type MessageType = "reply" | "internal_note" | "status_change";
+
+export type SupportProduct =
+  | "streamline-edu"
+  | "streamline-corporate"
+  | "streamline-creator"
+  | "horizon"
+  | "mejay"
+  // Allow any string while preserving autocomplete for known products
+  | (string & {});
+
+export const SUPPORTED_PRODUCTS: { value: SupportProduct; label: string }[] = [
+  { value: "streamline-edu", label: "StreamLine EDU" },
+  { value: "streamline-corporate", label: "StreamLine Corporate" },
+  { value: "streamline-creator", label: "StreamLine Creator" },
+  { value: "horizon", label: "Horizon" },
+  { value: "mejay", label: "MEJay" },
+];
 
 export interface TicketMessage {
   id: string;
   ticketId: string;
-  authorId: string;
+  authorUserId: string;
   authorName: string;
   authorRole: UserRole;
-  content: string;
-  isInternalNote: boolean;
+  type: MessageType;
+  message: string;
   createdAt: string;
 }
 
 export interface Ticket {
   id: string;
+  ticketNumber: string;
+  product: SupportProduct;
+  tenantId?: string;
+  orgId?: string;
+  schoolId?: string;
+  userId: string;
+  userName: string;
+  userEmail?: string;
   title: string;
   description: string;
-  school: string;
-  submittedBy: string;
-  submittedById: string;
-  submittedByRole: UserRole;
   category: TicketCategory;
   priority: TicketPriority;
   status: TicketStatus;
-  assignedTo: string | null;
+  source: string;
   tags: string[];
-  messages: TicketMessage[];
+  assignedToUserId?: string | null;
+  assignedToName?: string | null;
   createdAt: string;
   updatedAt: string;
+  closedAt?: string | null;
+  lastReplyAt?: string | null;
+  lastReplyBy?: string | null;
+  messages: TicketMessage[];
 }
 
 export interface TicketFilters {
   status?: TicketStatus;
   priority?: TicketPriority;
   category?: TicketCategory;
+  product?: SupportProduct;
+  tenantId?: string;
+  schoolId?: string;
+  orgId?: string;
+  assignedToUserId?: string;
   search?: string;
 }
 
@@ -44,18 +76,20 @@ export interface CreateTicketPayload {
   description: string;
   category: TicketCategory;
   priority: TicketPriority;
+  product?: SupportProduct;
   tags?: string[];
 }
 
 export interface UpdateTicketPayload {
   status?: TicketStatus;
   priority?: TicketPriority;
-  assignedTo?: string | null;
+  assignedToUserId?: string | null;
+  assignedToName?: string | null;
 }
 
 export interface AddMessagePayload {
-  content: string;
-  isInternalNote?: boolean;
+  message: string;
+  type?: MessageType;
 }
 
 export interface ReportPayload {
@@ -70,6 +104,19 @@ export interface ReportPayload {
 export interface CurrentUser {
   id: string;
   name: string;
+  email?: string;
   role: UserRole;
   school: string;
+  schoolId?: string;
+  tenantId?: string;
+  orgId?: string;
+}
+
+export interface DashboardMetrics {
+  openTickets: number;
+  urgentTickets: number;
+  waitingOnUser: number;
+  resolvedToday: number;
+  ticketsByProduct: Record<string, number>;
+  recentActivity: Ticket[];
 }

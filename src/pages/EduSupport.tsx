@@ -8,7 +8,7 @@ import { ReportForm } from "@/components/support/ReportForm";
 import { ResponseInbox } from "@/components/support/ResponseInbox";
 import { SupportFilters } from "@/components/support/SupportFilters";
 import { Button } from "@/components/ui/button";
-import { listMyTickets, getTicket, createTicket, addTicketMessage, submitReportAsTicket } from "@/lib/api/eduSupport";
+import { listMyTickets, getTicket, createTicket, addTicketMessage, submitReportAsTicket } from "@/lib/api/support";
 import type { Ticket, TicketFilters } from "@/lib/types/support";
 import { Plus } from "lucide-react";
 
