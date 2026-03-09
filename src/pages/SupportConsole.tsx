@@ -22,7 +22,10 @@ export default function SupportConsolePage() {
   const [filters, setFilters] = useState<TicketFilters>({});
 
   // Set admin context for the console
-  useEffect(() => { setCurrentUserKey("admin"); return () => setCurrentUserKey("teacher"); }, []);
+  useEffect(() => {
+    setCurrentUserKey("admin");
+    return () => setCurrentUserKey("teacher");
+  }, []);
 
   const fetchTickets = useCallback(async () => {
     setLoading(true);

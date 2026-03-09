@@ -25,7 +25,7 @@ export const getCurrentUser = (): CurrentUser => MOCK_USERS[currentUserKey] || M
 // ---------------------------------------------------------------------------
 // Mock data store — product-aware
 // ---------------------------------------------------------------------------
-let tickets: Ticket[] = [
+const tickets: Ticket[] = [
   {
     id: "t-001", ticketNumber: "TKT-001", product: "streamline-edu",
     tenantId: "tenant-district1", schoolId: "school-lincoln",

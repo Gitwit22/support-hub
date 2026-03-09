@@ -10,6 +10,7 @@ export type SupportProduct =
   | "streamline-creator"
   | "horizon"
   | "mejay"
+  // Allow any string while preserving autocomplete for known products
   | (string & {});
 
 export const SUPPORTED_PRODUCTS: { value: SupportProduct; label: string }[] = [
