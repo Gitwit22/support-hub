@@ -8,7 +8,7 @@ import { SupportTicketDetail } from "@/components/support/SupportTicketDetail";
 import { SupportTicketComposer } from "@/components/support/SupportTicketComposer";
 import {
   listTickets, getTicket, createTicket, updateTicket,
-  addTicketMessage, closeTicket, setCurrentUserKey,
+  addTicketMessage, closeTicket,
 } from "@/lib/api/support";
 import type { Ticket, TicketFilters } from "@/lib/types/support";
 import { LayoutDashboard, List, Plus } from "lucide-react";
@@ -20,12 +20,6 @@ export default function SupportConsolePage() {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [showComposer, setShowComposer] = useState(false);
   const [filters, setFilters] = useState<TicketFilters>({});
-
-  // Set admin context for the console
-  useEffect(() => {
-    setCurrentUserKey("admin");
-    return () => setCurrentUserKey("teacher");
-  }, []);
 
   const fetchTickets = useCallback(async () => {
     setLoading(true);
