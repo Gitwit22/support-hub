@@ -3,7 +3,7 @@ import { TicketDetail } from "@/components/support/TicketDetail";
 import { AdminTicketFilters } from "@/components/support/AdminTicketFilters";
 import { AdminTicketList } from "@/components/support/AdminTicketList";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
-import { listTickets, getTicket, updateTicket, addTicketMessage, closeTicket, setCurrentUserKey } from "@/lib/api/support";
+import { listTickets, getTicket, updateTicket, addTicketMessage, closeTicket } from "@/lib/api/support";
 import type { Ticket, TicketFilters } from "@/lib/types/support";
 import { AlertCircle, AlertTriangle, Clock, Inbox } from "lucide-react";
 
@@ -13,12 +13,6 @@ export default function AdminSupportPage() {
   const [loading, setLoading] = useState(true);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [filters, setFilters] = useState<TicketFilters>({});
-
-  // Set admin context
-  useEffect(() => {
-    setCurrentUserKey("admin");
-    return () => setCurrentUserKey("teacher");
-  }, []);
 
   const fetchTickets = useCallback(async () => {
     setLoading(true);
