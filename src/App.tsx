@@ -5,6 +5,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Index from "./pages/Index.tsx";
 import NotFound from "./pages/NotFound.tsx";
+import StreamLineShell from "./components/layout/StreamLineShell.tsx";
+import EduSupportPage from "./pages/EduSupport.tsx";
+import AdminSupportPage from "./pages/AdminSupport.tsx";
 
 const queryClient = new QueryClient();
 
@@ -15,7 +18,11 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Index />} />
+          <Route element={<StreamLineShell />}>
+            <Route path="/" element={<Index />} />
+            <Route path="/streamline/edu/support" element={<EduSupportPage />} />
+            <Route path="/streamline/admin/support" element={<AdminSupportPage />} />
+          </Route>
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
