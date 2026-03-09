@@ -13,6 +13,8 @@ interface AdminTicketListProps {
   emptyMessage?: string;
 }
 
+const GRID_COLS = "lg:grid-cols-[90px_1fr_120px_130px_90px_100px_90px_100px]";
+
 export function AdminTicketList({ tickets, onSelect, selectedTicketId, loading, emptyMessage = "No tickets found" }: AdminTicketListProps) {
   if (loading) {
     return (
@@ -34,7 +36,7 @@ export function AdminTicketList({ tickets, onSelect, selectedTicketId, loading, 
   return (
     <div className="rounded-lg border border-border overflow-hidden">
       {/* Table header — desktop only */}
-      <div className="hidden lg:grid lg:grid-cols-[90px_1fr_120px_130px_90px_100px_90px_100px] gap-2 px-4 py-2.5 border-b border-border bg-muted/50 text-xs font-medium text-muted-foreground">
+      <div className={`hidden lg:grid ${GRID_COLS} gap-2 px-4 py-2.5 border-b border-border bg-muted/50 text-xs font-medium text-muted-foreground`}>
         <span>Ticket #</span>
         <span>Title</span>
         <span>Submitted by</span>
@@ -58,7 +60,7 @@ export function AdminTicketList({ tickets, onSelect, selectedTicketId, loading, 
           )}
         >
           {/* Desktop row */}
-          <div className="hidden lg:grid lg:grid-cols-[90px_1fr_120px_130px_90px_100px_90px_100px] gap-2 items-center">
+          <div className={`hidden lg:grid ${GRID_COLS} gap-2 items-center`}>
             <span className="text-xs font-mono text-muted-foreground">{ticket.ticketNumber}</span>
             <span className="text-sm font-medium text-card-foreground truncate">{ticket.title}</span>
             <span className="text-xs text-muted-foreground truncate">{ticket.userName}</span>
@@ -86,7 +88,7 @@ export function AdminTicketList({ tickets, onSelect, selectedTicketId, loading, 
               <PriorityBadge priority={ticket.priority} />
               <span>{ticket.userName}</span>
               {ticket.schoolId && <span>{ticket.schoolId}</span>}
-              {ticket.assignedToName && <span>→ {ticket.assignedToName}</span>}
+              {ticket.assignedToName && <span aria-label={`Assigned to ${ticket.assignedToName}`}>→ {ticket.assignedToName}</span>}
               <span className="ml-auto">{formatDistanceToNow(new Date(ticket.updatedAt), { addSuffix: true })}</span>
             </div>
           </div>

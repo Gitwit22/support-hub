@@ -41,7 +41,8 @@ export default function AdminSupportPage() {
   // Derive summary stats from unfiltered EDU tickets
   const stats = useMemo(() => {
     const open = allEduTickets.filter(t => t.status === "open").length;
-    const urgent = allEduTickets.filter(t => t.priority === "urgent" && t.status !== "closed" && t.status !== "resolved").length;
+    const activeStatuses = ["open", "in_progress", "waiting"];
+    const urgent = allEduTickets.filter(t => t.priority === "urgent" && activeStatuses.includes(t.status)).length;
     const waiting = allEduTickets.filter(t => t.status === "waiting").length;
     return { open, urgent, waiting, total: allEduTickets.length };
   }, [allEduTickets]);
@@ -113,39 +114,43 @@ export default function AdminSupportPage() {
       {/* Filters */}
       <AdminTicketFilters filters={filters} onChange={setFilters} schoolIds={schoolIds} />
 
-      {/* Split-pane layout — hidden on mobile, show stacked fallback */}
+      {/* Split-pane layout — desktop only */}
       <div className="hidden lg:block">
-        <ResizablePanelGroup direction="horizontal" className="min-h-[600px] rounded-lg border border-border">
-          <ResizablePanel id="ticket-list" order={1} defaultSize={selectedTicket ? 40 : 100} minSize={30}>
-            <div className="h-full overflow-auto">
-              <AdminTicketList
-                tickets={tickets}
-                onSelect={handleSelectTicket}
-                selectedTicketId={selectedTicket?.id}
-                loading={loading}
-                emptyMessage="No EDU tickets match your filters"
-              />
-            </div>
-          </ResizablePanel>
-
-          {selectedTicket && (
-            <>
-              <ResizableHandle withHandle />
-              <ResizablePanel id="ticket-detail" order={2} defaultSize={60} minSize={35}>
-                <div className="h-full overflow-auto p-6">
-                  <TicketDetail
-                    ticket={selectedTicket}
-                    onBack={() => setSelectedTicket(null)}
-                    onReply={handleReply}
-                    onUpdate={handleUpdate}
-                    onClose={handleClose}
-                    isAdmin
-                  />
-                </div>
-              </ResizablePanel>
-            </>
-          )}
-        </ResizablePanelGroup>
+        {selectedTicket ? (
+          <ResizablePanelGroup direction="horizontal" className="min-h-[600px] rounded-lg border border-border">
+            <ResizablePanel id="ticket-list" order={1} defaultSize={40} minSize={30}>
+              <div className="h-full overflow-auto">
+                <AdminTicketList
+                  tickets={tickets}
+                  onSelect={handleSelectTicket}
+                  selectedTicketId={selectedTicket.id}
+                  loading={loading}
+                  emptyMessage="No EDU tickets match your filters"
+                />
+              </div>
+            </ResizablePanel>
+            <ResizableHandle withHandle />
+            <ResizablePanel id="ticket-detail" order={2} defaultSize={60} minSize={35}>
+              <div className="h-full overflow-auto p-6">
+                <TicketDetail
+                  ticket={selectedTicket}
+                  onBack={() => setSelectedTicket(null)}
+                  onReply={handleReply}
+                  onUpdate={handleUpdate}
+                  onClose={handleClose}
+                  isAdmin
+                />
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        ) : (
+          <AdminTicketList
+            tickets={tickets}
+            onSelect={handleSelectTicket}
+            loading={loading}
+            emptyMessage="No EDU tickets match your filters"
+          />
+        )}
       </div>
 
       {/* Mobile stacked layout */}
