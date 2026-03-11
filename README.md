@@ -1,4 +1,4 @@
-# Welcome to your Lovable project
+# Support Hub
 
 ## Project info
 
@@ -81,3 +81,87 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+
+---
+
+## Connecting to a Real Backend
+
+All mock data has been removed. The app now fetches live data from a backend API. Follow the steps below to wire it up.
+
+### 1. Set the API base URL
+
+Copy `.env.example` to `.env` and set `VITE_API_BASE_URL` to your backend's base URL:
+
+```sh
+cp .env.example .env
+```
+
+```env
+# .env
+VITE_API_BASE_URL=https://your-api-server.example.com/api
+```
+
+When omitted the app falls back to `/api`, which is suitable for a reverse-proxy setup where the frontend and backend share the same origin.
+
+### 2. Required API endpoints
+
+Your backend must implement the following REST endpoints. All endpoints accept and return `application/json`. Authentication is handled via cookies/session (the browser sends credentials automatically).
+
+#### Support endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/support/me` | Returns the currently authenticated user (`CurrentUser`) |
+| `GET` | `/api/support/tickets` | List tickets (supports query params: `status`, `priority`, `category`, `product`, `tenantId`, `schoolId`, `orgId`, `assignedToUserId`, `search`) |
+| `GET` | `/api/support/tickets/mine` | List tickets belonging to the current user |
+| `GET` | `/api/support/tickets/:id` | Get a single ticket (returns `404` when not found) |
+| `POST` | `/api/support/tickets` | Create a ticket (`CreateTicketPayload` body) |
+| `PATCH` | `/api/support/tickets/:id` | Update a ticket (`UpdateTicketPayload` body, returns `404` when not found) |
+| `POST` | `/api/support/tickets/:id/messages` | Add a message to a ticket (`AddMessagePayload` body) |
+| `POST` | `/api/support/tickets/:id/close` | Close a ticket |
+| `POST` | `/api/support/reports` | Submit an incident/report as a ticket (`ReportPayload` body) |
+| `GET` | `/api/support/dashboard` | Returns `DashboardMetrics` for the support dashboard |
+
+#### Admin endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/admin/monitoring` | Returns `MonitoringOverview` (service health) |
+| `GET` | `/api/admin/diagnostics` | Returns `DiagnosticEntry[]` |
+| `GET` | `/api/admin/rooms` | Returns `Room[]` |
+| `GET` | `/api/admin/alerts` | Returns `Alert[]` |
+| `GET` | `/api/admin/usage` | Returns `UsageMetrics` |
+| `GET` | `/api/admin/webhooks` | Returns `Webhook[]` |
+| `GET` | `/api/admin/dashboard` | Returns `AdminDashboardSummary` |
+
+### 3. Response type reference
+
+All types are defined in `src/lib/types/support.ts` and `src/lib/types/admin.ts`. Your backend responses must conform to these TypeScript interfaces.
+
+### 4. CORS (if backend is on a different origin)
+
+If `VITE_API_BASE_URL` points to a different origin than the frontend, configure your backend to:
+
+- Allow the frontend origin in `Access-Control-Allow-Origin`
+- Set `Access-Control-Allow-Credentials: true`
+- Allow `Content-Type` in `Access-Control-Allow-Headers`
+
+### 5. Development proxy (optional)
+
+For local development you can proxy `/api` to a local backend by adding a `server.proxy` entry to `vite.config.ts`:
+
+```ts
+// vite.config.ts
+export default defineConfig({
+  server: {
+    proxy: {
+      "/api": {
+        target: "http://localhost:3001",
+        changeOrigin: true,
+      },
+    },
+  },
+});
+```
+
+This way you can leave `VITE_API_BASE_URL` unset and still hit a local backend.

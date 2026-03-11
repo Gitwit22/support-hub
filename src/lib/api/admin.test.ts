@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   getMonitoringOverview,
   listDiagnostics,
@@ -8,110 +8,153 @@ import {
   listWebhooks,
   getAdminDashboardSummary,
 } from "./admin";
+import type {
+  MonitoringOverview,
+  DiagnosticEntry,
+  Room,
+  Alert,
+  UsageMetrics,
+  Webhook,
+  AdminDashboardSummary,
+} from "@/lib/types/admin";
 
-describe("admin API", () => {
+// ---------------------------------------------------------------------------
+// Helpers – stub fetch globally for each test
+// ---------------------------------------------------------------------------
+
+function mockFetchOnce(body: unknown, status = 200) {
+  (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: status === 200 ? "OK" : "Error",
+    headers: { get: () => null },
+    json: () => Promise.resolve(body),
+  });
+}
+
+function lastFetchCall() {
+  const calls = (global.fetch as ReturnType<typeof vi.fn>).mock.calls;
+  const [url, opts] = calls[calls.length - 1] as [string, RequestInit | undefined];
+  return { url, opts };
+}
+
+// ---------------------------------------------------------------------------
+// Sample payloads returned by the "server"
+// ---------------------------------------------------------------------------
+
+const sampleOverview: MonitoringOverview = {
+  services: [
+    { name: "API Gateway", status: "healthy", latencyMs: 42, checkedAt: "2026-03-09T18:30:00Z" },
+  ],
+  overallStatus: "healthy",
+  checkedAt: "2026-03-09T18:30:00Z",
+};
+
+const sampleDiagnostics: DiagnosticEntry[] = [
+  { id: "d-001", severity: "error", source: "API Gateway", message: "502 error", timestamp: "2026-03-09T18:10:00Z" },
+];
+
+const sampleRooms: Room[] = [
+  { id: "r-001", name: "Math 101", type: "classroom", status: "active", participants: 28, maxParticipants: 35, createdAt: "2026-03-09T13:00:00Z", lastActivityAt: "2026-03-09T18:25:00Z" },
+];
+
+const sampleAlerts: Alert[] = [
+  { id: "a-001", title: "High error rate", severity: "high", status: "active", service: "API Gateway", message: "Error rate exceeded 5%", createdAt: "2026-03-09T17:45:00Z", updatedAt: "2026-03-09T18:15:00Z" },
+];
+
+const sampleUsage: UsageMetrics = {
+  ticketsToday: 14, activeUsers: 1247, roomsCreated: 38,
+  messagesSent: 4812, streamMinutes: 2340, apiRequests: 128450,
+  recordingsCreated: 7, hlsMinutes: 1120,
+};
+
+const sampleWebhooks: Webhook[] = [
+  { id: "wh-001", url: "https://hooks.example.com/events", events: ["ticket.created"], status: "active", failureCount: 0, createdAt: "2026-01-15T10:00:00Z" },
+];
+
+const sampleSummary: AdminDashboardSummary = {
+  openTickets: 3, urgentTickets: 2, activeRooms: 4,
+  overallHealth: "healthy", activeAlerts: 2,
+  ticketsToday: 14, activeUsers: 1247,
+};
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe("admin API (real fetch)", () => {
+  beforeEach(() => {
+    global.fetch = vi.fn();
+  });
+
   describe("getMonitoringOverview", () => {
-    it("returns services with overall status", async () => {
-      const overview = await getMonitoringOverview();
-      expect(overview.services.length).toBeGreaterThan(0);
-      expect(["healthy", "degraded", "down", "unknown"]).toContain(overview.overallStatus);
-      expect(overview.checkedAt).toBeTruthy();
-      for (const svc of overview.services) {
-        expect(svc.name).toBeTruthy();
-        expect(["healthy", "degraded", "down", "unknown"]).toContain(svc.status);
-        expect(svc.checkedAt).toBeTruthy();
-      }
+    it("calls GET /admin/monitoring", async () => {
+      mockFetchOnce(sampleOverview);
+      const result = await getMonitoringOverview();
+      expect(result).toEqual(sampleOverview);
+      const { url, opts } = lastFetchCall();
+      expect(url).toBe("/api/admin/monitoring");
+      expect(opts?.method).toBeUndefined();
     });
   });
 
   describe("listDiagnostics", () => {
-    it("returns entries sorted by timestamp descending", async () => {
-      const entries = await listDiagnostics();
-      expect(entries.length).toBeGreaterThan(0);
-      for (let i = 1; i < entries.length; i++) {
-        expect(new Date(entries[i - 1].timestamp).getTime())
-          .toBeGreaterThanOrEqual(new Date(entries[i].timestamp).getTime());
-      }
-      for (const entry of entries) {
-        expect(entry.id).toBeTruthy();
-        expect(["error", "warning", "info"]).toContain(entry.severity);
-        expect(entry.source).toBeTruthy();
-        expect(entry.message).toBeTruthy();
-      }
+    it("calls GET /admin/diagnostics", async () => {
+      mockFetchOnce(sampleDiagnostics);
+      const result = await listDiagnostics();
+      expect(result).toEqual(sampleDiagnostics);
+      const { url } = lastFetchCall();
+      expect(url).toBe("/api/admin/diagnostics");
     });
   });
 
   describe("listRooms", () => {
-    it("returns rooms with required fields", async () => {
-      const rooms = await listRooms();
-      expect(rooms.length).toBeGreaterThan(0);
-      for (const room of rooms) {
-        expect(room.id).toBeTruthy();
-        expect(room.name).toBeTruthy();
-        expect(["classroom", "meeting", "broadcast", "webinar"]).toContain(room.type);
-        expect(["active", "idle", "closed", "error"]).toContain(room.status);
-        expect(room.participants).toBeGreaterThanOrEqual(0);
-        expect(room.maxParticipants).toBeGreaterThan(0);
-      }
+    it("calls GET /admin/rooms", async () => {
+      mockFetchOnce(sampleRooms);
+      const result = await listRooms();
+      expect(result).toEqual(sampleRooms);
+      const { url } = lastFetchCall();
+      expect(url).toBe("/api/admin/rooms");
     });
   });
 
   describe("listAlerts", () => {
-    it("returns alerts sorted by creation date descending", async () => {
-      const alerts = await listAlerts();
-      expect(alerts.length).toBeGreaterThan(0);
-      for (let i = 1; i < alerts.length; i++) {
-        expect(new Date(alerts[i - 1].createdAt).getTime())
-          .toBeGreaterThanOrEqual(new Date(alerts[i].createdAt).getTime());
-      }
-      for (const alert of alerts) {
-        expect(alert.id).toBeTruthy();
-        expect(alert.title).toBeTruthy();
-        expect(["critical", "high", "medium", "low", "info"]).toContain(alert.severity);
-        expect(["active", "acknowledged", "resolved"]).toContain(alert.status);
-        expect(alert.service).toBeTruthy();
-      }
+    it("calls GET /admin/alerts", async () => {
+      mockFetchOnce(sampleAlerts);
+      const result = await listAlerts();
+      expect(result).toEqual(sampleAlerts);
+      const { url } = lastFetchCall();
+      expect(url).toBe("/api/admin/alerts");
     });
   });
 
   describe("getUsageMetrics", () => {
-    it("returns all metric fields", async () => {
-      const metrics = await getUsageMetrics();
-      expect(metrics.ticketsToday).toBeGreaterThanOrEqual(0);
-      expect(metrics.activeUsers).toBeGreaterThanOrEqual(0);
-      expect(metrics.roomsCreated).toBeGreaterThanOrEqual(0);
-      expect(metrics.messagesSent).toBeGreaterThanOrEqual(0);
-      expect(metrics.streamMinutes).toBeGreaterThanOrEqual(0);
-      expect(metrics.apiRequests).toBeGreaterThanOrEqual(0);
-      expect(metrics.recordingsCreated).toBeGreaterThanOrEqual(0);
-      expect(metrics.hlsMinutes).toBeGreaterThanOrEqual(0);
+    it("calls GET /admin/usage", async () => {
+      mockFetchOnce(sampleUsage);
+      const result = await getUsageMetrics();
+      expect(result).toEqual(sampleUsage);
+      const { url } = lastFetchCall();
+      expect(url).toBe("/api/admin/usage");
     });
   });
 
   describe("listWebhooks", () => {
-    it("returns webhooks with required fields", async () => {
-      const webhooks = await listWebhooks();
-      expect(webhooks.length).toBeGreaterThan(0);
-      for (const wh of webhooks) {
-        expect(wh.id).toBeTruthy();
-        expect(wh.url).toBeTruthy();
-        expect(wh.events.length).toBeGreaterThan(0);
-        expect(["active", "failing", "disabled"]).toContain(wh.status);
-        expect(wh.failureCount).toBeGreaterThanOrEqual(0);
-      }
+    it("calls GET /admin/webhooks", async () => {
+      mockFetchOnce(sampleWebhooks);
+      const result = await listWebhooks();
+      expect(result).toEqual(sampleWebhooks);
+      const { url } = lastFetchCall();
+      expect(url).toBe("/api/admin/webhooks");
     });
   });
 
   describe("getAdminDashboardSummary", () => {
-    it("returns aggregated dashboard data", async () => {
-      const summary = await getAdminDashboardSummary();
-      expect(summary.openTickets).toBeGreaterThanOrEqual(0);
-      expect(summary.urgentTickets).toBeGreaterThanOrEqual(0);
-      expect(summary.activeRooms).toBeGreaterThanOrEqual(0);
-      expect(["healthy", "degraded", "down", "unknown"]).toContain(summary.overallHealth);
-      expect(summary.activeAlerts).toBeGreaterThanOrEqual(0);
-      expect(summary.ticketsToday).toBeGreaterThanOrEqual(0);
-      expect(summary.activeUsers).toBeGreaterThanOrEqual(0);
+    it("calls GET /admin/dashboard", async () => {
+      mockFetchOnce(sampleSummary);
+      const result = await getAdminDashboardSummary();
+      expect(result).toEqual(sampleSummary);
+      const { url } = lastFetchCall();
+      expect(url).toBe("/api/admin/dashboard");
     });
   });
 });
