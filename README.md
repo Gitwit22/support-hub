@@ -62,6 +62,16 @@ This project is built with:
 
 ## How can I deploy this project?
 
+### Build command & output
+
+```sh
+npm run build
+```
+
+This runs `vite build` and outputs the production bundle to the **`dist/`** directory. Point your hosting provider's publish/output directory to `dist`.
+
+### One-click deploy via Lovable
+
 Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
 
 ## Can I connect a custom domain to my Lovable project?
