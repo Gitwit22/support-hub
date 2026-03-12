@@ -100,3 +100,76 @@ export interface AdminDashboardSummary {
   ticketsToday: number;
   activeUsers: number;
 }
+
+// ---------------------------------------------------------------------------
+// Admin Monitoring – granular endpoints
+// ---------------------------------------------------------------------------
+
+/** GET /api/admin/monitoring/overview — health summary */
+export interface MonitoringHealthSummary {
+  webhooksActive: number;
+  webhooksFailing: number;
+  activeRooms: number;
+  pendingSupportTickets: number;
+  overallStatus: ServiceStatus;
+  checkedAt: string;
+}
+
+/** GET /api/admin/monitoring/services — per-service status */
+export interface MonitoringServiceStatus {
+  services: Array<{
+    name: string;
+    status: ServiceStatus;
+    latencyMs?: number;
+    checkedAt: string;
+    message?: string;
+  }>;
+  checkedAt: string;
+}
+
+/** Webhook delivery log entry */
+export type WebhookDeliveryStatus = "pending" | "success" | "failed";
+
+export interface WebhookDeliveryEntry {
+  id: string;
+  webhookId: string;
+  eventId: string;
+  eventName: string;
+  url: string;
+  status: WebhookDeliveryStatus;
+  statusCode?: number;
+  attempt: number;
+  createdAt: string;
+  completedAt?: string;
+  error?: string;
+}
+
+/** GET /api/admin/monitoring/webhooks — paginated webhook delivery log */
+export interface WebhookDeliveryLog {
+  deliveries: WebhookDeliveryEntry[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+/** GET /api/admin/rooms/active — live rooms */
+export interface ActiveRoom {
+  id: string;
+  name: string;
+  type: string;
+  participants: number;
+  startedAt: string;
+  lastActivityAt: string;
+}
+
+/** GET /api/admin/support/tickets — support tickets for admin view */
+export interface AdminSupportTicket {
+  id: string;
+  ticketNumber: string;
+  title: string;
+  status: string;
+  priority: string;
+  assignedTo?: string;
+  createdAt: string;
+  updatedAt: string;
+}
