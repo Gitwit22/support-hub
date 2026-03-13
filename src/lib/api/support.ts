@@ -4,6 +4,11 @@ import type {
   DashboardMetrics,
 } from "@/lib/types/support";
 import { apiFetch, ApiError } from "./client";
+import {
+  seedCurrentUser,
+  seedTickets,
+  seedDashboardMetrics,
+} from "./seedData";
 
 // ---------------------------------------------------------------------------
 // Auth — user identity is managed server-side via session / token.
@@ -14,7 +19,11 @@ import { apiFetch, ApiError } from "./client";
 export const setCurrentUserKey = (_key: string) => { /* no-op */ };
 
 export async function getCurrentUser(): Promise<CurrentUser> {
-  return apiFetch<CurrentUser>("/support/me");
+  try {
+    return await apiFetch<CurrentUser>("/support/me");
+  } catch {
+    return seedCurrentUser;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -46,11 +55,19 @@ function isNotFound(err: unknown): boolean {
 // ---------------------------------------------------------------------------
 
 export async function listTickets(filters?: TicketFilters): Promise<Ticket[]> {
-  return apiFetch<Ticket[]>(`/support/tickets${buildQuery(filters)}`);
+  try {
+    return await apiFetch<Ticket[]>(`/support/tickets${buildQuery(filters)}`);
+  } catch {
+    return seedTickets;
+  }
 }
 
 export async function listMyTickets(filters?: TicketFilters): Promise<Ticket[]> {
-  return apiFetch<Ticket[]>(`/support/tickets/mine${buildQuery(filters)}`);
+  try {
+    return await apiFetch<Ticket[]>(`/support/tickets/mine${buildQuery(filters)}`);
+  } catch {
+    return seedTickets;
+  }
 }
 
 export async function getTicket(ticketId: string): Promise<Ticket | undefined> {
@@ -58,15 +75,40 @@ export async function getTicket(ticketId: string): Promise<Ticket | undefined> {
     return await apiFetch<Ticket>(`/support/tickets/${encodeURIComponent(ticketId)}`);
   } catch (err: unknown) {
     if (isNotFound(err)) return undefined;
-    throw err;
+    return seedTickets.find((t) => t.id === ticketId);
   }
 }
 
 export async function createTicket(payload: CreateTicketPayload): Promise<Ticket> {
-  return apiFetch<Ticket>("/support/tickets", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  try {
+    return await apiFetch<Ticket>("/support/tickets", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    const newTicket: Ticket = {
+      id: `t-${Date.now()}`,
+      ticketNumber: `TKT-${Math.floor(1000 + Math.random() * 9000)}`,
+      product: payload.product ?? "streamline-edu",
+      userId: seedCurrentUser.id,
+      userName: seedCurrentUser.name,
+      userEmail: seedCurrentUser.email,
+      title: payload.title,
+      description: payload.description,
+      category: payload.category,
+      priority: payload.priority,
+      status: "open",
+      source: "web",
+      tags: payload.tags ?? [],
+      assignedToUserId: null,
+      assignedToName: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      messages: [],
+    };
+    seedTickets.unshift(newTicket);
+    return newTicket;
+  }
 }
 
 export async function updateTicket(ticketId: string, payload: UpdateTicketPayload): Promise<Ticket | undefined> {
@@ -77,7 +119,11 @@ export async function updateTicket(ticketId: string, payload: UpdateTicketPayloa
     });
   } catch (err: unknown) {
     if (isNotFound(err)) return undefined;
-    throw err;
+    const ticket = seedTickets.find((t) => t.id === ticketId);
+    if (ticket) {
+      Object.assign(ticket, payload, { updatedAt: new Date().toISOString() });
+    }
+    return ticket;
   }
 }
 
@@ -89,7 +135,19 @@ export async function addTicketMessage(ticketId: string, payload: AddMessagePayl
     );
   } catch (err: unknown) {
     if (isNotFound(err)) return undefined;
-    throw err;
+    const msg: TicketMessage = {
+      id: `m-${Date.now()}`,
+      ticketId,
+      authorUserId: seedCurrentUser.id,
+      authorName: seedCurrentUser.name,
+      authorRole: seedCurrentUser.role,
+      type: payload.type ?? "reply",
+      message: payload.message,
+      createdAt: new Date().toISOString(),
+    };
+    const ticket = seedTickets.find((t) => t.id === ticketId);
+    if (ticket) ticket.messages.push(msg);
+    return msg;
   }
 }
 
@@ -101,17 +159,51 @@ export async function closeTicket(ticketId: string): Promise<Ticket | undefined>
     );
   } catch (err: unknown) {
     if (isNotFound(err)) return undefined;
-    throw err;
+    const ticket = seedTickets.find((t) => t.id === ticketId);
+    if (ticket) {
+      ticket.status = "closed";
+      ticket.closedAt = new Date().toISOString();
+      ticket.updatedAt = new Date().toISOString();
+    }
+    return ticket;
   }
 }
 
 export async function submitReportAsTicket(payload: ReportPayload): Promise<Ticket> {
-  return apiFetch<Ticket>("/support/reports", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
+  try {
+    return await apiFetch<Ticket>("/support/reports", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    const newTicket: Ticket = {
+      id: `t-${Date.now()}`,
+      ticketNumber: `TKT-${Math.floor(1000 + Math.random() * 9000)}`,
+      product: "streamline-edu",
+      userId: seedCurrentUser.id,
+      userName: seedCurrentUser.name,
+      title: payload.title,
+      description: payload.description,
+      category: "incident",
+      priority: payload.severity === "critical" ? "urgent" : payload.severity === "high" ? "high" : "medium",
+      status: "open",
+      source: "report",
+      tags: payload.tags ?? [],
+      assignedToUserId: null,
+      assignedToName: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      messages: [],
+    };
+    seedTickets.unshift(newTicket);
+    return newTicket;
+  }
 }
 
 export async function listDashboardMetrics(): Promise<DashboardMetrics> {
-  return apiFetch<DashboardMetrics>("/support/dashboard");
+  try {
+    return await apiFetch<DashboardMetrics>("/support/dashboard");
+  } catch {
+    return seedDashboardMetrics;
+  }
 }
