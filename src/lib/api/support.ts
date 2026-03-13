@@ -86,7 +86,7 @@ export async function createTicket(payload: CreateTicketPayload): Promise<Ticket
       body: JSON.stringify(payload),
     });
   } catch {
-    const newTicket: Ticket = {
+    return {
       id: `t-${Date.now()}`,
       ticketNumber: `TKT-${Math.floor(1000 + Math.random() * 9000)}`,
       product: payload.product ?? "streamline-edu",
@@ -106,8 +106,6 @@ export async function createTicket(payload: CreateTicketPayload): Promise<Ticket
       updatedAt: new Date().toISOString(),
       messages: [],
     };
-    seedTickets.unshift(newTicket);
-    return newTicket;
   }
 }
 
@@ -120,10 +118,8 @@ export async function updateTicket(ticketId: string, payload: UpdateTicketPayloa
   } catch (err: unknown) {
     if (isNotFound(err)) return undefined;
     const ticket = seedTickets.find((t) => t.id === ticketId);
-    if (ticket) {
-      Object.assign(ticket, payload, { updatedAt: new Date().toISOString() });
-    }
-    return ticket;
+    if (!ticket) return undefined;
+    return { ...ticket, ...payload, updatedAt: new Date().toISOString() };
   }
 }
 
@@ -145,8 +141,6 @@ export async function addTicketMessage(ticketId: string, payload: AddMessagePayl
       message: payload.message,
       createdAt: new Date().toISOString(),
     };
-    const ticket = seedTickets.find((t) => t.id === ticketId);
-    if (ticket) ticket.messages.push(msg);
     return msg;
   }
 }
@@ -160,12 +154,9 @@ export async function closeTicket(ticketId: string): Promise<Ticket | undefined>
   } catch (err: unknown) {
     if (isNotFound(err)) return undefined;
     const ticket = seedTickets.find((t) => t.id === ticketId);
-    if (ticket) {
-      ticket.status = "closed";
-      ticket.closedAt = new Date().toISOString();
-      ticket.updatedAt = new Date().toISOString();
-    }
-    return ticket;
+    if (!ticket) return undefined;
+    const now = new Date().toISOString();
+    return { ...ticket, status: "closed" as const, closedAt: now, updatedAt: now };
   }
 }
 
@@ -176,12 +167,13 @@ export async function submitReportAsTicket(payload: ReportPayload): Promise<Tick
       body: JSON.stringify(payload),
     });
   } catch {
-    const newTicket: Ticket = {
+    return {
       id: `t-${Date.now()}`,
       ticketNumber: `TKT-${Math.floor(1000 + Math.random() * 9000)}`,
       product: "streamline-edu",
       userId: seedCurrentUser.id,
       userName: seedCurrentUser.name,
+      userEmail: seedCurrentUser.email,
       title: payload.title,
       description: payload.description,
       category: "incident",
@@ -195,8 +187,6 @@ export async function submitReportAsTicket(payload: ReportPayload): Promise<Tick
       updatedAt: new Date().toISOString(),
       messages: [],
     };
-    seedTickets.unshift(newTicket);
-    return newTicket;
   }
 }
 
