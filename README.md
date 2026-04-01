@@ -103,6 +103,35 @@ VITE_API_BASE_URL=https://your-api-server.example.com/api
 
 When omitted the app falls back to `/api`, which is suitable for a reverse-proxy setup where the frontend and backend share the same origin.
 
+### 1b. Pull support data directly from StreamLine (optional)
+
+If your source of truth is StreamLine, you can route support calls directly to it without changing UI code.
+
+```env
+# Keep default backend pathing for non-support modules
+VITE_API_BASE_URL=/api
+
+# Enable StreamLine source for support API calls
+VITE_SUPPORT_DATA_SOURCE=streamline
+VITE_STREAMLINE_API_BASE_URL=https://streamline.example.com/api
+
+# Optional: include if StreamLine requires bearer auth
+VITE_STREAMLINE_API_TOKEN=replace-me
+```
+
+Behavior:
+
+- `VITE_SUPPORT_DATA_SOURCE=streamline` routes support API calls (`/support/*`) to `VITE_STREAMLINE_API_BASE_URL`.
+- Any other value (or unset) keeps current behavior and uses `VITE_API_BASE_URL`.
+- Admin endpoints (`/admin/*`) are unaffected and continue using `VITE_API_BASE_URL`.
+
+If you also run a backend for Support Hub, mirror the StreamLine config server-side:
+
+```env
+STREAMLINE_API_BASE_URL=https://your-streamline-domain.com
+STREAMLINE_API_TOKEN=optional_if_required
+```
+
 ### 2. Required API endpoints
 
 Your backend must implement the following REST endpoints. All endpoints accept and return `application/json`. Authentication is handled via cookies/session (the browser sends credentials automatically).
@@ -121,6 +150,8 @@ Your backend must implement the following REST endpoints. All endpoints accept a
 | `POST` | `/api/support/tickets/:id/close` | Close a ticket |
 | `POST` | `/api/support/reports` | Submit an incident/report as a ticket (`ReportPayload` body) |
 | `GET` | `/api/support/dashboard` | Returns `DashboardMetrics` for the support dashboard |
+
+When StreamLine mode is enabled, the same endpoint shapes are expected on the StreamLine base URL (without requiring UI changes).
 
 #### Admin endpoints
 

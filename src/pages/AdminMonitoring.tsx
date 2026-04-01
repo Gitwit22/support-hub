@@ -3,6 +3,11 @@ import { getMonitoringOverview } from "@/lib/api/admin";
 import type { MonitoringOverview, ServiceStatus } from "@/lib/types/admin";
 import { formatDistanceToNow } from "date-fns";
 import { HeartPulse, CheckCircle2, AlertTriangle, XCircle, HelpCircle } from "lucide-react";
+import {
+  fetchSupportStatus,
+  isStreamlineConfigured,
+  isStreamlineValidationError,
+} from "@/services/streamlineApi";
 
 const statusConfig: Record<ServiceStatus, { label: string; color: string; bg: string; icon: typeof CheckCircle2 }> = {
   healthy:  { label: "Healthy",  color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950", icon: CheckCircle2 },
@@ -14,9 +19,73 @@ const statusConfig: Record<ServiceStatus, { label: string; color: string; bg: st
 export default function MonitoringPage() {
   const [overview, setOverview] = useState<MonitoringOverview | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isConnected, setIsConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   useEffect(() => {
-    getMonitoringOverview().then((o) => { setOverview(o); setLoading(false); });
+    let mounted = true;
+
+    const loadStatus = async () => {
+      try {
+        if (!isStreamlineConfigured()) {
+          const fallback = await getMonitoringOverview();
+          if (!mounted) return;
+
+          setOverview(fallback);
+          setIsConnected(true);
+          setConnectionError(null);
+          return;
+        }
+
+        const status = await fetchSupportStatus();
+        if (!mounted) return;
+
+        setIsConnected(status.connected);
+        setConnectionError(null);
+        setOverview({
+          overallStatus: status.status,
+          checkedAt: status.checkedAt,
+          services: [
+            {
+              name: "StreamLine Support API",
+              status: status.status,
+              checkedAt: status.checkedAt,
+              message: status.message,
+            },
+          ],
+        });
+      } catch (error) {
+        if (!mounted) return;
+
+        const now = new Date().toISOString();
+        const message = isStreamlineValidationError(error)
+          ? "StreamLine returned unexpected data"
+          : "StreamLine connection unavailable";
+
+        setIsConnected(false);
+        setConnectionError(message);
+        setOverview({
+          overallStatus: "down",
+          checkedAt: now,
+          services: [
+            {
+              name: "StreamLine Support API",
+              status: "down",
+              checkedAt: now,
+              message,
+            },
+          ],
+        });
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    loadStatus();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   if (loading || !overview) {
@@ -40,6 +109,12 @@ export default function MonitoringPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Monitoring</h1>
           <p className="text-sm text-muted-foreground mt-1">Service health and system status.</p>
+          <p className={`mt-2 text-sm ${isConnected ? "text-emerald-600" : "text-destructive"}`}>
+            {isConnected ? "● Connected" : "● Disconnected"}
+          </p>
+          {connectionError && (
+            <p className="mt-1 text-sm text-destructive">{connectionError}</p>
+          )}
         </div>
         <div className={`flex items-center gap-2 rounded-full px-4 py-1.5 ${overall.bg}`}>
           <HeartPulse className={`h-4 w-4 ${overall.color}`} />

@@ -3,7 +3,12 @@ import type {
   AddMessagePayload, ReportPayload, TicketMessage, CurrentUser,
   DashboardMetrics,
 } from "@/lib/types/support";
-import { apiFetch, ApiError } from "./client";
+import {
+  apiFetch,
+  ApiError,
+  isStreamlineSupportEnabled,
+  streamlineFetch,
+} from "./client";
 import {
   seedCurrentUser,
   seedTickets,
@@ -18,9 +23,16 @@ import {
 /** @deprecated User context is now managed server-side. */
 export const setCurrentUserKey = (_key: string) => { /* no-op */ };
 
+async function supportFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  if (isStreamlineSupportEnabled()) {
+    return streamlineFetch<T>(path, options);
+  }
+  return apiFetch<T>(path, options);
+}
+
 export async function getCurrentUser(): Promise<CurrentUser> {
   try {
-    return await apiFetch<CurrentUser>("/support/me");
+    return await supportFetch<CurrentUser>("/support/me");
   } catch {
     return seedCurrentUser;
   }
@@ -56,7 +68,7 @@ function isNotFound(err: unknown): boolean {
 
 export async function listTickets(filters?: TicketFilters): Promise<Ticket[]> {
   try {
-    return await apiFetch<Ticket[]>(`/support/tickets${buildQuery(filters)}`);
+    return await supportFetch<Ticket[]>(`/support/tickets${buildQuery(filters)}`);
   } catch {
     return seedTickets;
   }
@@ -64,7 +76,7 @@ export async function listTickets(filters?: TicketFilters): Promise<Ticket[]> {
 
 export async function listMyTickets(filters?: TicketFilters): Promise<Ticket[]> {
   try {
-    return await apiFetch<Ticket[]>(`/support/tickets/mine${buildQuery(filters)}`);
+    return await supportFetch<Ticket[]>(`/support/tickets/mine${buildQuery(filters)}`);
   } catch {
     return seedTickets;
   }
@@ -72,7 +84,7 @@ export async function listMyTickets(filters?: TicketFilters): Promise<Ticket[]> 
 
 export async function getTicket(ticketId: string): Promise<Ticket | undefined> {
   try {
-    return await apiFetch<Ticket>(`/support/tickets/${encodeURIComponent(ticketId)}`);
+    return await supportFetch<Ticket>(`/support/tickets/${encodeURIComponent(ticketId)}`);
   } catch (err: unknown) {
     if (isNotFound(err)) return undefined;
     return seedTickets.find((t) => t.id === ticketId);
@@ -81,7 +93,7 @@ export async function getTicket(ticketId: string): Promise<Ticket | undefined> {
 
 export async function createTicket(payload: CreateTicketPayload): Promise<Ticket> {
   try {
-    return await apiFetch<Ticket>("/support/tickets", {
+    return await supportFetch<Ticket>("/support/tickets", {
       method: "POST",
       body: JSON.stringify(payload),
     });
@@ -111,7 +123,7 @@ export async function createTicket(payload: CreateTicketPayload): Promise<Ticket
 
 export async function updateTicket(ticketId: string, payload: UpdateTicketPayload): Promise<Ticket | undefined> {
   try {
-    return await apiFetch<Ticket>(`/support/tickets/${encodeURIComponent(ticketId)}`, {
+    return await supportFetch<Ticket>(`/support/tickets/${encodeURIComponent(ticketId)}`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     });
@@ -125,7 +137,7 @@ export async function updateTicket(ticketId: string, payload: UpdateTicketPayloa
 
 export async function addTicketMessage(ticketId: string, payload: AddMessagePayload): Promise<TicketMessage | undefined> {
   try {
-    return await apiFetch<TicketMessage>(
+    return await supportFetch<TicketMessage>(
       `/support/tickets/${encodeURIComponent(ticketId)}/messages`,
       { method: "POST", body: JSON.stringify(payload) },
     );
@@ -147,7 +159,7 @@ export async function addTicketMessage(ticketId: string, payload: AddMessagePayl
 
 export async function closeTicket(ticketId: string): Promise<Ticket | undefined> {
   try {
-    return await apiFetch<Ticket>(
+    return await supportFetch<Ticket>(
       `/support/tickets/${encodeURIComponent(ticketId)}/close`,
       { method: "POST" },
     );
@@ -162,7 +174,7 @@ export async function closeTicket(ticketId: string): Promise<Ticket | undefined>
 
 export async function submitReportAsTicket(payload: ReportPayload): Promise<Ticket> {
   try {
-    return await apiFetch<Ticket>("/support/reports", {
+    return await supportFetch<Ticket>("/support/reports", {
       method: "POST",
       body: JSON.stringify(payload),
     });
@@ -192,7 +204,7 @@ export async function submitReportAsTicket(payload: ReportPayload): Promise<Tick
 
 export async function listDashboardMetrics(): Promise<DashboardMetrics> {
   try {
-    return await apiFetch<DashboardMetrics>("/support/dashboard");
+    return await supportFetch<DashboardMetrics>("/support/dashboard");
   } catch {
     return seedDashboardMetrics;
   }
