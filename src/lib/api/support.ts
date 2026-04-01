@@ -9,11 +9,23 @@ import {
   isStreamlineSupportEnabled,
   streamlineFetch,
 } from "./client";
-import {
-  seedCurrentUser,
-  seedTickets,
-  seedDashboardMetrics,
-} from "./seedData";
+
+const EMPTY_CURRENT_USER: CurrentUser = {
+  id: "-",
+  name: "-",
+  email: "-",
+  role: "platform_admin",
+  school: "-",
+};
+
+const EMPTY_DASHBOARD_METRICS: DashboardMetrics = {
+  openTickets: 0,
+  urgentTickets: 0,
+  waitingOnUser: 0,
+  resolvedToday: 0,
+  ticketsByProduct: {},
+  recentActivity: [],
+};
 
 // ---------------------------------------------------------------------------
 // Auth — user identity is managed server-side via session / token.
@@ -34,7 +46,7 @@ export async function getCurrentUser(): Promise<CurrentUser> {
   try {
     return await supportFetch<CurrentUser>("/support/me");
   } catch {
-    return seedCurrentUser;
+    return EMPTY_CURRENT_USER;
   }
 }
 
@@ -70,7 +82,7 @@ export async function listTickets(filters?: TicketFilters): Promise<Ticket[]> {
   try {
     return await supportFetch<Ticket[]>(`/support/tickets${buildQuery(filters)}`);
   } catch {
-    return seedTickets;
+    return [];
   }
 }
 
@@ -78,7 +90,7 @@ export async function listMyTickets(filters?: TicketFilters): Promise<Ticket[]> 
   try {
     return await supportFetch<Ticket[]>(`/support/tickets/mine${buildQuery(filters)}`);
   } catch {
-    return seedTickets;
+    return [];
   }
 }
 
@@ -87,38 +99,15 @@ export async function getTicket(ticketId: string): Promise<Ticket | undefined> {
     return await supportFetch<Ticket>(`/support/tickets/${encodeURIComponent(ticketId)}`);
   } catch (err: unknown) {
     if (isNotFound(err)) return undefined;
-    return seedTickets.find((t) => t.id === ticketId);
+    return undefined;
   }
 }
 
 export async function createTicket(payload: CreateTicketPayload): Promise<Ticket> {
-  try {
-    return await supportFetch<Ticket>("/support/tickets", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-  } catch {
-    return {
-      id: `t-${Date.now()}`,
-      ticketNumber: `TKT-${Math.floor(1000 + Math.random() * 9000)}`,
-      product: payload.product ?? "streamline-edu",
-      userId: seedCurrentUser.id,
-      userName: seedCurrentUser.name,
-      userEmail: seedCurrentUser.email,
-      title: payload.title,
-      description: payload.description,
-      category: payload.category,
-      priority: payload.priority,
-      status: "open",
-      source: "web",
-      tags: payload.tags ?? [],
-      assignedToUserId: null,
-      assignedToName: null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      messages: [],
-    };
-  }
+  return supportFetch<Ticket>("/support/tickets", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function updateTicket(ticketId: string, payload: UpdateTicketPayload): Promise<Ticket | undefined> {
@@ -129,9 +118,7 @@ export async function updateTicket(ticketId: string, payload: UpdateTicketPayloa
     });
   } catch (err: unknown) {
     if (isNotFound(err)) return undefined;
-    const ticket = seedTickets.find((t) => t.id === ticketId);
-    if (!ticket) return undefined;
-    return { ...ticket, ...payload, updatedAt: new Date().toISOString() };
+    return undefined;
   }
 }
 
@@ -143,17 +130,7 @@ export async function addTicketMessage(ticketId: string, payload: AddMessagePayl
     );
   } catch (err: unknown) {
     if (isNotFound(err)) return undefined;
-    const msg: TicketMessage = {
-      id: `m-${Date.now()}`,
-      ticketId,
-      authorUserId: seedCurrentUser.id,
-      authorName: seedCurrentUser.name,
-      authorRole: seedCurrentUser.role,
-      type: payload.type ?? "reply",
-      message: payload.message,
-      createdAt: new Date().toISOString(),
-    };
-    return msg;
+    return undefined;
   }
 }
 
@@ -165,47 +142,21 @@ export async function closeTicket(ticketId: string): Promise<Ticket | undefined>
     );
   } catch (err: unknown) {
     if (isNotFound(err)) return undefined;
-    const ticket = seedTickets.find((t) => t.id === ticketId);
-    if (!ticket) return undefined;
-    const now = new Date().toISOString();
-    return { ...ticket, status: "closed" as const, closedAt: now, updatedAt: now };
+    return undefined;
   }
 }
 
 export async function submitReportAsTicket(payload: ReportPayload): Promise<Ticket> {
-  try {
-    return await supportFetch<Ticket>("/support/reports", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-  } catch {
-    return {
-      id: `t-${Date.now()}`,
-      ticketNumber: `TKT-${Math.floor(1000 + Math.random() * 9000)}`,
-      product: "streamline-edu",
-      userId: seedCurrentUser.id,
-      userName: seedCurrentUser.name,
-      userEmail: seedCurrentUser.email,
-      title: payload.title,
-      description: payload.description,
-      category: "incident",
-      priority: payload.severity === "critical" ? "urgent" : payload.severity === "high" ? "high" : "medium",
-      status: "open",
-      source: "report",
-      tags: payload.tags ?? [],
-      assignedToUserId: null,
-      assignedToName: null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      messages: [],
-    };
-  }
+  return supportFetch<Ticket>("/support/reports", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function listDashboardMetrics(): Promise<DashboardMetrics> {
   try {
     return await supportFetch<DashboardMetrics>("/support/dashboard");
   } catch {
-    return seedDashboardMetrics;
+    return EMPTY_DASHBOARD_METRICS;
   }
 }

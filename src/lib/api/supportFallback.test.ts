@@ -8,41 +8,36 @@ import {
   getCurrentUser,
   listDashboardMetrics,
 } from "./support";
-import {
-  seedTickets,
-  seedCurrentUser,
-  seedDashboardMetrics,
-} from "./seedData";
 
 // ---------------------------------------------------------------------------
-// When the backend is unreachable every API function should return seed data
-// instead of throwing.
+// When the backend is unreachable, read paths should return empty-safe values
+// and writes should not fabricate mock data.
 // ---------------------------------------------------------------------------
 
-describe("support API – seed data fallback", () => {
+describe("support API – empty fallback", () => {
   beforeEach(() => {
     global.fetch = vi.fn().mockRejectedValue(new TypeError("fetch failed"));
   });
 
-  it("getCurrentUser returns seed user on network error", async () => {
+  it("getCurrentUser returns blank-safe user on network error", async () => {
     const result = await getCurrentUser();
-    expect(result).toEqual(seedCurrentUser);
+    expect(result.id).toBe("-");
+    expect(result.name).toBe("-");
   });
 
-  it("listTickets returns seed tickets on network error", async () => {
+  it("listTickets returns empty array on network error", async () => {
     const result = await listTickets();
-    expect(result).toEqual(seedTickets);
+    expect(result).toEqual([]);
   });
 
-  it("listMyTickets returns seed tickets on network error", async () => {
+  it("listMyTickets returns empty array on network error", async () => {
     const result = await listMyTickets();
-    expect(result).toEqual(seedTickets);
+    expect(result).toEqual([]);
   });
 
-  it("getTicket returns matching seed ticket on network error", async () => {
-    const result = await getTicket("t-001");
-    expect(result).toBeDefined();
-    expect(result?.id).toBe("t-001");
+  it("getTicket returns undefined on network error", async () => {
+    const result = await getTicket("any-id");
+    expect(result).toBeUndefined();
   });
 
   it("getTicket returns undefined for unknown id on network error", async () => {
@@ -50,27 +45,29 @@ describe("support API – seed data fallback", () => {
     expect(result).toBeUndefined();
   });
 
-  it("createTicket returns a new ticket on network error", async () => {
-    const result = await createTicket({
+  it("createTicket rejects on network error", async () => {
+    await expect(createTicket({
       title: "Test ticket",
       description: "A test description",
       category: "technical",
       priority: "medium",
-    });
-    expect(result.title).toBe("Test ticket");
-    expect(result.status).toBe("open");
-    expect(result.id).toBeTruthy();
+    })).rejects.toThrow();
   });
 
-  it("closeTicket updates seed ticket on network error", async () => {
+  it("closeTicket returns undefined on network error", async () => {
     const result = await closeTicket("t-001");
-    expect(result).toBeDefined();
-    expect(result?.status).toBe("closed");
-    expect(result?.closedAt).toBeTruthy();
+    expect(result).toBeUndefined();
   });
 
-  it("listDashboardMetrics returns seed metrics on network error", async () => {
+  it("listDashboardMetrics returns empty metrics on network error", async () => {
     const result = await listDashboardMetrics();
-    expect(result).toEqual(seedDashboardMetrics);
+    expect(result).toEqual({
+      openTickets: 0,
+      urgentTickets: 0,
+      waitingOnUser: 0,
+      resolvedToday: 0,
+      ticketsByProduct: {},
+      recentActivity: [],
+    });
   });
 });

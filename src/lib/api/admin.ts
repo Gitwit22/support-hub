@@ -11,22 +11,59 @@ import type {
   WebhookDeliveryLog,
   ActiveRoom,
   AdminSupportTicket,
+  ServiceStatus,
 } from "@/lib/types/admin";
 import { apiFetch } from "./client";
-import {
-  seedMonitoringOverview,
-  seedDiagnostics,
-  seedRooms,
-  seedAlerts,
-  seedUsageMetrics,
-  seedWebhooks,
-  seedAdminDashboardSummary,
-  seedMonitoringHealthSummary,
-  seedMonitoringServiceStatus,
-  seedWebhookDeliveryLog,
-  seedActiveRooms,
-  seedAdminSupportTickets,
-} from "./seedData";
+
+const now = () => new Date().toISOString();
+
+const EMPTY_MONITORING_OVERVIEW: MonitoringOverview = {
+  services: [],
+  overallStatus: "unknown" as ServiceStatus,
+  checkedAt: now(),
+};
+
+const EMPTY_USAGE_METRICS: UsageMetrics = {
+  ticketsToday: 0,
+  activeUsers: 0,
+  roomsCreated: 0,
+  messagesSent: 0,
+  streamMinutes: 0,
+  apiRequests: 0,
+  recordingsCreated: 0,
+  hlsMinutes: 0,
+};
+
+const EMPTY_ADMIN_DASHBOARD_SUMMARY: AdminDashboardSummary = {
+  openTickets: 0,
+  urgentTickets: 0,
+  activeRooms: 0,
+  overallHealth: "unknown" as ServiceStatus,
+  activeAlerts: 0,
+  ticketsToday: 0,
+  activeUsers: 0,
+};
+
+const EMPTY_MONITORING_HEALTH_SUMMARY: MonitoringHealthSummary = {
+  webhooksActive: 0,
+  webhooksFailing: 0,
+  activeRooms: 0,
+  pendingSupportTickets: 0,
+  overallStatus: "unknown" as ServiceStatus,
+  checkedAt: now(),
+};
+
+const EMPTY_MONITORING_SERVICE_STATUS: MonitoringServiceStatus = {
+  services: [],
+  checkedAt: now(),
+};
+
+const EMPTY_WEBHOOK_DELIVERY_LOG: WebhookDeliveryLog = {
+  deliveries: [],
+  total: 0,
+  page: 1,
+  pageSize: 20,
+};
 
 // ---------------------------------------------------------------------------
 // Monitoring / Health
@@ -36,7 +73,7 @@ export async function getMonitoringOverview(): Promise<MonitoringOverview> {
   try {
     return await apiFetch<MonitoringOverview>("/admin/monitoring");
   } catch {
-    return seedMonitoringOverview;
+    return EMPTY_MONITORING_OVERVIEW;
   }
 }
 
@@ -48,7 +85,7 @@ export async function listDiagnostics(): Promise<DiagnosticEntry[]> {
   try {
     return await apiFetch<DiagnosticEntry[]>("/admin/diagnostics");
   } catch {
-    return seedDiagnostics;
+    return [];
   }
 }
 
@@ -60,7 +97,7 @@ export async function listRooms(): Promise<Room[]> {
   try {
     return await apiFetch<Room[]>("/admin/rooms");
   } catch {
-    return seedRooms;
+    return [];
   }
 }
 
@@ -72,7 +109,7 @@ export async function listAlerts(): Promise<Alert[]> {
   try {
     return await apiFetch<Alert[]>("/admin/alerts");
   } catch {
-    return seedAlerts;
+    return [];
   }
 }
 
@@ -84,7 +121,7 @@ export async function getUsageMetrics(): Promise<UsageMetrics> {
   try {
     return await apiFetch<UsageMetrics>("/admin/usage");
   } catch {
-    return seedUsageMetrics;
+    return EMPTY_USAGE_METRICS;
   }
 }
 
@@ -96,7 +133,7 @@ export async function listWebhooks(): Promise<Webhook[]> {
   try {
     return await apiFetch<Webhook[]>("/admin/webhooks");
   } catch {
-    return seedWebhooks;
+    return [];
   }
 }
 
@@ -108,7 +145,7 @@ export async function getAdminDashboardSummary(): Promise<AdminDashboardSummary>
   try {
     return await apiFetch<AdminDashboardSummary>("/admin/dashboard");
   } catch {
-    return seedAdminDashboardSummary;
+    return EMPTY_ADMIN_DASHBOARD_SUMMARY;
   }
 }
 
@@ -121,7 +158,7 @@ export async function getMonitoringHealthSummary(): Promise<MonitoringHealthSumm
   try {
     return await apiFetch<MonitoringHealthSummary>("/admin/monitoring/overview");
   } catch {
-    return seedMonitoringHealthSummary;
+    return EMPTY_MONITORING_HEALTH_SUMMARY;
   }
 }
 
@@ -130,7 +167,7 @@ export async function getMonitoringServiceStatus(): Promise<MonitoringServiceSta
   try {
     return await apiFetch<MonitoringServiceStatus>("/admin/monitoring/services");
   } catch {
-    return seedMonitoringServiceStatus;
+    return EMPTY_MONITORING_SERVICE_STATUS;
   }
 }
 
@@ -150,7 +187,7 @@ export async function getWebhookDeliveryLog(params?: {
     const qs = query.toString();
     return await apiFetch<WebhookDeliveryLog>(`/admin/monitoring/webhooks${qs ? `?${qs}` : ""}`);
   } catch {
-    return seedWebhookDeliveryLog;
+    return EMPTY_WEBHOOK_DELIVERY_LOG;
   }
 }
 
@@ -159,7 +196,7 @@ export async function getRecentAlerts(): Promise<Alert[]> {
   try {
     return await apiFetch<Alert[]>("/admin/alerts");
   } catch {
-    return seedAlerts;
+    return [];
   }
 }
 
@@ -168,7 +205,7 @@ export async function getActiveRooms(): Promise<ActiveRoom[]> {
   try {
     return await apiFetch<ActiveRoom[]>("/admin/rooms/active");
   } catch {
-    return seedActiveRooms;
+    return [];
   }
 }
 
@@ -177,6 +214,6 @@ export async function getAdminSupportTickets(): Promise<AdminSupportTicket[]> {
   try {
     return await apiFetch<AdminSupportTicket[]>("/admin/support/tickets");
   } catch {
-    return seedAdminSupportTickets;
+    return [];
   }
 }

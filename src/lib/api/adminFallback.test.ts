@@ -14,93 +14,102 @@ import {
   getActiveRooms,
   getAdminSupportTickets,
 } from "./admin";
-import {
-  seedMonitoringOverview,
-  seedDiagnostics,
-  seedRooms,
-  seedAlerts,
-  seedUsageMetrics,
-  seedWebhooks,
-  seedAdminDashboardSummary,
-  seedMonitoringHealthSummary,
-  seedMonitoringServiceStatus,
-  seedWebhookDeliveryLog,
-  seedActiveRooms,
-  seedAdminSupportTickets,
-} from "./seedData";
 
 // ---------------------------------------------------------------------------
-// When the backend is unreachable every API function should return seed data
-// instead of throwing.
+// When the backend is unreachable, API reads should return empty-safe values.
 // ---------------------------------------------------------------------------
 
-describe("admin API – seed data fallback", () => {
+describe("admin API – empty fallback", () => {
   beforeEach(() => {
     global.fetch = vi.fn().mockRejectedValue(new TypeError("fetch failed"));
   });
 
-  it("getMonitoringOverview returns seed data on network error", async () => {
+  it("getMonitoringOverview returns empty data on network error", async () => {
     const result = await getMonitoringOverview();
-    expect(result).toEqual(seedMonitoringOverview);
+    expect(result.services).toEqual([]);
+    expect(result.overallStatus).toBe("unknown");
   });
 
-  it("listDiagnostics returns seed data on network error", async () => {
+  it("listDiagnostics returns empty data on network error", async () => {
     const result = await listDiagnostics();
-    expect(result).toEqual(seedDiagnostics);
+    expect(result).toEqual([]);
   });
 
-  it("listRooms returns seed data on network error", async () => {
+  it("listRooms returns empty data on network error", async () => {
     const result = await listRooms();
-    expect(result).toEqual(seedRooms);
+    expect(result).toEqual([]);
   });
 
-  it("listAlerts returns seed data on network error", async () => {
+  it("listAlerts returns empty data on network error", async () => {
     const result = await listAlerts();
-    expect(result).toEqual(seedAlerts);
+    expect(result).toEqual([]);
   });
 
-  it("getUsageMetrics returns seed data on network error", async () => {
+  it("getUsageMetrics returns empty data on network error", async () => {
     const result = await getUsageMetrics();
-    expect(result).toEqual(seedUsageMetrics);
+    expect(result).toEqual({
+      ticketsToday: 0,
+      activeUsers: 0,
+      roomsCreated: 0,
+      messagesSent: 0,
+      streamMinutes: 0,
+      apiRequests: 0,
+      recordingsCreated: 0,
+      hlsMinutes: 0,
+    });
   });
 
-  it("listWebhooks returns seed data on network error", async () => {
+  it("listWebhooks returns empty data on network error", async () => {
     const result = await listWebhooks();
-    expect(result).toEqual(seedWebhooks);
+    expect(result).toEqual([]);
   });
 
-  it("getAdminDashboardSummary returns seed data on network error", async () => {
+  it("getAdminDashboardSummary returns empty data on network error", async () => {
     const result = await getAdminDashboardSummary();
-    expect(result).toEqual(seedAdminDashboardSummary);
+    expect(result).toEqual({
+      openTickets: 0,
+      urgentTickets: 0,
+      activeRooms: 0,
+      overallHealth: "unknown",
+      activeAlerts: 0,
+      ticketsToday: 0,
+      activeUsers: 0,
+    });
   });
 
-  it("getMonitoringHealthSummary returns seed data on network error", async () => {
+  it("getMonitoringHealthSummary returns empty data on network error", async () => {
     const result = await getMonitoringHealthSummary();
-    expect(result).toEqual(seedMonitoringHealthSummary);
+    expect(result.webhooksActive).toBe(0);
+    expect(result.overallStatus).toBe("unknown");
   });
 
-  it("getMonitoringServiceStatus returns seed data on network error", async () => {
+  it("getMonitoringServiceStatus returns empty data on network error", async () => {
     const result = await getMonitoringServiceStatus();
-    expect(result).toEqual(seedMonitoringServiceStatus);
+    expect(result.services).toEqual([]);
   });
 
-  it("getWebhookDeliveryLog returns seed data on network error", async () => {
+  it("getWebhookDeliveryLog returns empty data on network error", async () => {
     const result = await getWebhookDeliveryLog();
-    expect(result).toEqual(seedWebhookDeliveryLog);
+    expect(result).toEqual({
+      deliveries: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+    });
   });
 
-  it("getRecentAlerts returns seed data on network error", async () => {
+  it("getRecentAlerts returns empty data on network error", async () => {
     const result = await getRecentAlerts();
-    expect(result).toEqual(seedAlerts);
+    expect(result).toEqual([]);
   });
 
-  it("getActiveRooms returns seed data on network error", async () => {
+  it("getActiveRooms returns empty data on network error", async () => {
     const result = await getActiveRooms();
-    expect(result).toEqual(seedActiveRooms);
+    expect(result).toEqual([]);
   });
 
-  it("getAdminSupportTickets returns seed data on network error", async () => {
+  it("getAdminSupportTickets returns empty data on network error", async () => {
     const result = await getAdminSupportTickets();
-    expect(result).toEqual(seedAdminSupportTickets);
+    expect(result).toEqual([]);
   });
 });
