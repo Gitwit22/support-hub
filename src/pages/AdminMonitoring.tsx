@@ -34,9 +34,20 @@ export default function MonitoringPage() {
           if (!mounted) return;
 
           setOverview(fallback);
-          setIsConnected(true);
+          setIsConnected(fallback.services.length > 0 && fallback.overallStatus !== "down");
           setConnectionError(null);
-          setDiagnosticsText([]);
+          if (fallback.services.length === 0) {
+            setDiagnosticsText([
+              "Base URL: -",
+              "Source: default",
+              "Endpoint: /admin/monitoring",
+              "Status Code: -",
+              "Error Type: no-data",
+              "Error: No monitoring data returned",
+            ]);
+          } else {
+            setDiagnosticsText([]);
+          }
           return;
         }
 
@@ -121,6 +132,14 @@ export default function MonitoringPage() {
   }
 
   const overall = statusConfig[overview.overallStatus];
+  const services = overview.services.length > 0
+    ? overview.services
+    : [{
+        name: "Monitoring Data",
+        status: "unknown" as ServiceStatus,
+        checkedAt: overview.checkedAt,
+        message: "No monitoring data returned",
+      }];
 
   return (
     <div className="space-y-6">
@@ -149,7 +168,7 @@ export default function MonitoringPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {overview.services.map((svc) => {
+        {services.map((svc) => {
           const cfg = statusConfig[svc.status];
           const StatusIcon = cfg.icon;
           return (
