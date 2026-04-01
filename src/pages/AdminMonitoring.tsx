@@ -5,6 +5,7 @@ import { formatDistanceToNow } from "date-fns";
 import { HeartPulse, CheckCircle2, AlertTriangle, XCircle, HelpCircle } from "lucide-react";
 import {
   fetchSupportStatus,
+  getStreamlineDiagnostics,
   isStreamlineConfigured,
   isStreamlineValidationError,
 } from "@/services/streamlineApi";
@@ -21,6 +22,7 @@ export default function MonitoringPage() {
   const [loading, setLoading] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [diagnosticsText, setDiagnosticsText] = useState<string[]>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -34,6 +36,7 @@ export default function MonitoringPage() {
           setOverview(fallback);
           setIsConnected(true);
           setConnectionError(null);
+          setDiagnosticsText([]);
           return;
         }
 
@@ -42,6 +45,7 @@ export default function MonitoringPage() {
 
         setIsConnected(status.connected);
         setConnectionError(null);
+        setDiagnosticsText([]);
         setOverview({
           overallStatus: status.status,
           checkedAt: status.checkedAt,
@@ -64,6 +68,21 @@ export default function MonitoringPage() {
 
         setIsConnected(false);
         setConnectionError(message);
+
+        const d = getStreamlineDiagnostics();
+        const lines = [
+          `Base URL: ${d.baseUrl || "-"}`,
+          `Source: ${d.supportDataSource || "-"}`,
+          `Endpoint: ${d.lastEndpoint || "-"}`,
+          `Status Code: ${d.lastStatusCode ?? "-"}`,
+          `Error Type: ${d.lastErrorType || "-"}`,
+          `Error: ${d.lastErrorMessage || "-"}`,
+        ];
+        if (d.lastValidationDetails?.length) {
+          lines.push(`Validation: ${d.lastValidationDetails.join(" | ")}`);
+        }
+        setDiagnosticsText(lines);
+
         setOverview({
           overallStatus: "down",
           checkedAt: now,
@@ -114,6 +133,13 @@ export default function MonitoringPage() {
           </p>
           {connectionError && (
             <p className="mt-1 text-sm text-destructive">{connectionError}</p>
+          )}
+          {connectionError && diagnosticsText.length > 0 && (
+            <div className="mt-2 rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground space-y-1">
+              {diagnosticsText.map((line) => (
+                <p key={line}>{line}</p>
+              ))}
+            </div>
           )}
         </div>
         <div className={`flex items-center gap-2 rounded-full px-4 py-1.5 ${overall.bg}`}>

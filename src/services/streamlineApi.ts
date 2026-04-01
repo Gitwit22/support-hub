@@ -23,6 +23,20 @@ export interface StreamlineRoomChatMessage {
   createdAt: string;
 }
 
+export interface StreamlineDiagnostics {
+  configured: boolean;
+  baseUrl: string;
+  supportDataSource?: string;
+  lastUpdatedAt?: string;
+  lastEndpoint?: string;
+  lastUrl?: string;
+  lastDurationMs?: number;
+  lastStatusCode?: number;
+  lastErrorType?: "config" | "http" | "network" | "timeout" | "validation";
+  lastErrorMessage?: string;
+  lastValidationDetails?: string[];
+}
+
 type UnknownRecord = Record<string, unknown>;
 
 interface RoomContract {
@@ -69,6 +83,24 @@ export function isStreamlineValidationError(error: unknown): error is Streamline
   return error instanceof StreamlineValidationError;
 }
 
+const diagnosticsState: StreamlineDiagnostics = {
+  configured: false,
+  baseUrl: "",
+  supportDataSource: SUPPORT_DATA_SOURCE,
+};
+
+function updateDiagnostics(patch: Partial<StreamlineDiagnostics>): void {
+  Object.assign(diagnosticsState, patch, { lastUpdatedAt: new Date().toISOString() });
+}
+
+export function getStreamlineDiagnostics(): StreamlineDiagnostics {
+  const baseUrl = normalizeBaseUrl(STREAMLINE_API_BASE_URL);
+  diagnosticsState.baseUrl = baseUrl;
+  diagnosticsState.configured = Boolean(baseUrl);
+  diagnosticsState.supportDataSource = SUPPORT_DATA_SOURCE;
+  return { ...diagnosticsState };
+}
+
 function normalizeBaseUrl(url?: string): string {
   return (url ?? "").replace(/\/$/, "");
 }
@@ -99,6 +131,13 @@ function assertObject(endpoint: string, payload: unknown, field = "response"): U
 }
 
 function throwValidation(endpoint: string, details: string[], payload: unknown): never {
+  updateDiagnostics({
+    lastEndpoint: endpoint,
+    lastErrorType: "validation",
+    lastErrorMessage: "StreamLine returned unexpected data",
+    lastValidationDetails: details,
+  });
+
   if (import.meta.env.DEV) {
     console.error("[streamlineApi] Contract validation failed", {
       endpoint,
@@ -263,6 +302,15 @@ function parseChatMessageContract(endpoint: string, payload: unknown): RoomChatC
 export async function apiFetch(path: string): Promise<unknown> {
   const baseUrl = normalizeBaseUrl(STREAMLINE_API_BASE_URL);
   if (!baseUrl) {
+    updateDiagnostics({
+      configured: false,
+      baseUrl,
+      lastEndpoint: path,
+      lastErrorType: "config",
+      lastErrorMessage: "VITE_STREAMLINE_API_BASE_URL is not configured",
+      lastValidationDetails: undefined,
+      lastStatusCode: undefined,
+    });
     throw new Error("VITE_STREAMLINE_API_BASE_URL is not configured");
   }
 
@@ -285,6 +333,18 @@ export async function apiFetch(path: string): Promise<unknown> {
     }
 
     if (!response.ok) {
+      updateDiagnostics({
+        configured: true,
+        baseUrl,
+        lastEndpoint: path,
+        lastUrl: requestUrl,
+        lastDurationMs: duration,
+        lastStatusCode: response.status,
+        lastErrorType: "http",
+        lastErrorMessage: `HTTP ${response.status} ${response.statusText}`,
+        lastValidationDetails: undefined,
+      });
+
       if (import.meta.env.DEV) {
         console.error("[streamlineApi] Request failed", {
           url: requestUrl,
@@ -297,6 +357,18 @@ export async function apiFetch(path: string): Promise<unknown> {
     }
 
     const text = await response.text();
+    updateDiagnostics({
+      configured: true,
+      baseUrl,
+      lastEndpoint: path,
+      lastUrl: requestUrl,
+      lastDurationMs: duration,
+      lastStatusCode: response.status,
+      lastErrorType: undefined,
+      lastErrorMessage: undefined,
+      lastValidationDetails: undefined,
+    });
+
     if (!text) return null;
 
     try {
@@ -315,7 +387,30 @@ export async function apiFetch(path: string): Promise<unknown> {
     }
 
     if (error instanceof DOMException && error.name === "AbortError") {
+      updateDiagnostics({
+        configured: true,
+        baseUrl,
+        lastEndpoint: path,
+        lastUrl: requestUrl,
+        lastDurationMs: duration,
+        lastErrorType: "timeout",
+        lastErrorMessage: `StreamLine API request timed out after ${REQUEST_TIMEOUT_MS}ms`,
+        lastValidationDetails: undefined,
+      });
       throw new Error(`StreamLine API request timed out after ${REQUEST_TIMEOUT_MS}ms`);
+    }
+
+    if (!isStreamlineValidationError(error)) {
+      updateDiagnostics({
+        configured: true,
+        baseUrl,
+        lastEndpoint: path,
+        lastUrl: requestUrl,
+        lastDurationMs: duration,
+        lastErrorType: "network",
+        lastErrorMessage: error instanceof Error ? error.message : "StreamLine API request failed",
+        lastValidationDetails: undefined,
+      });
     }
 
     throw error instanceof Error ? error : new Error("StreamLine API request failed");

@@ -7,6 +7,7 @@ import {
   fetchRooms,
   fetchRoomDetails,
   fetchRoomChat,
+  getStreamlineDiagnostics,
   isStreamlineConfigured,
   isStreamlineValidationError,
   type StreamlineRoomDetails,
@@ -34,6 +35,7 @@ export default function RoomsPage() {
   const [selectedRoomDetails, setSelectedRoomDetails] = useState<StreamlineRoomDetails | null>(null);
   const [roomChat, setRoomChat] = useState<StreamlineRoomChatMessage[]>([]);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [diagnosticsText, setDiagnosticsText] = useState<string[]>([]);
 
   useEffect(() => {
     let mounted = true;
@@ -51,6 +53,7 @@ export default function RoomsPage() {
         if (result.length > 0) {
           setSelectedRoomId((prev) => prev ?? result[0].id);
         }
+        setDiagnosticsText([]);
       } catch (error) {
         if (!mounted) return;
 
@@ -65,6 +68,19 @@ export default function RoomsPage() {
         }
 
         setConnectionError(message);
+        const d = getStreamlineDiagnostics();
+        const lines = [
+          `Base URL: ${d.baseUrl || "-"}`,
+          `Source: ${d.supportDataSource || "-"}`,
+          `Endpoint: ${d.lastEndpoint || "-"}`,
+          `Status Code: ${d.lastStatusCode ?? "-"}`,
+          `Error Type: ${d.lastErrorType || "-"}`,
+          `Error: ${d.lastErrorMessage || "-"}`,
+        ];
+        if (d.lastValidationDetails?.length) {
+          lines.push(`Validation: ${d.lastValidationDetails.join(" | ")}`);
+        }
+        setDiagnosticsText(lines);
       } finally {
         if (mounted) {
           setLoading(false);
@@ -107,6 +123,7 @@ export default function RoomsPage() {
 
         setSelectedRoomDetails(details);
         setRoomChat(chat);
+        setDiagnosticsText([]);
       } catch (error) {
         if (!mounted) return;
         setSelectedRoomDetails(null);
@@ -114,6 +131,19 @@ export default function RoomsPage() {
         if (isStreamlineValidationError(error)) {
           setConnectionError("StreamLine returned unexpected data");
         }
+        const d = getStreamlineDiagnostics();
+        const lines = [
+          `Base URL: ${d.baseUrl || "-"}`,
+          `Source: ${d.supportDataSource || "-"}`,
+          `Endpoint: ${d.lastEndpoint || "-"}`,
+          `Status Code: ${d.lastStatusCode ?? "-"}`,
+          `Error Type: ${d.lastErrorType || "-"}`,
+          `Error: ${d.lastErrorMessage || "-"}`,
+        ];
+        if (d.lastValidationDetails?.length) {
+          lines.push(`Validation: ${d.lastValidationDetails.join(" | ")}`);
+        }
+        setDiagnosticsText(lines);
       }
     };
 
@@ -147,6 +177,13 @@ export default function RoomsPage() {
         <p className="text-sm text-muted-foreground mt-1">Active rooms, participants, and broadcast state.</p>
         {connectionError && (
           <p className="mt-2 text-sm text-destructive">{connectionError}</p>
+        )}
+        {connectionError && diagnosticsText.length > 0 && (
+          <div className="mt-2 rounded-md border border-border bg-card px-3 py-2 text-xs text-muted-foreground space-y-1">
+            {diagnosticsText.map((line) => (
+              <p key={line}>{line}</p>
+            ))}
+          </div>
         )}
       </div>
 
