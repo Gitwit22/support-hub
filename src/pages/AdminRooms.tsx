@@ -10,6 +10,7 @@ import {
   getStreamlineDiagnostics,
   isStreamlineConfigured,
   isStreamlineValidationError,
+  updateStreamlinePollingHealth,
   type StreamlineRoomDetails,
   type StreamlineRoomChatMessage,
 } from "@/services/streamlineApi";
@@ -41,6 +42,11 @@ export default function RoomsPage() {
     let mounted = true;
 
     const loadRooms = async () => {
+      updateStreamlinePollingHealth({
+        enabled: isStreamlineConfigured(),
+        intervalMs: 8_000,
+      });
+
       try {
         const result = isStreamlineConfigured()
           ? await fetchRooms()
@@ -54,6 +60,11 @@ export default function RoomsPage() {
           setSelectedRoomId((prev) => prev ?? result[0].id);
         }
         setDiagnosticsText([]);
+        updateStreamlinePollingHealth({
+          enabled: isStreamlineConfigured(),
+          intervalMs: 8_000,
+          success: true,
+        });
       } catch (error) {
         if (!mounted) return;
 
@@ -81,6 +92,11 @@ export default function RoomsPage() {
           lines.push(`Validation: ${d.lastValidationDetails.join(" | ")}`);
         }
         setDiagnosticsText(lines);
+        updateStreamlinePollingHealth({
+          enabled: isStreamlineConfigured(),
+          intervalMs: 8_000,
+          success: false,
+        });
       } finally {
         if (mounted) {
           setLoading(false);
@@ -94,6 +110,9 @@ export default function RoomsPage() {
     return () => {
       mounted = false;
       window.clearInterval(intervalId);
+      updateStreamlinePollingHealth({
+        enabled: false,
+      });
     };
   }, []);
 

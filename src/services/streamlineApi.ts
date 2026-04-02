@@ -1,8 +1,14 @@
 import type { Room, RoomStatus, ServiceStatus } from "@/lib/types/admin";
 
 const STREAMLINE_API_BASE_URL = import.meta.env.VITE_STREAMLINE_API_BASE_URL;
+const STREAMLINE_API_TOKEN = import.meta.env.VITE_STREAMLINE_API_TOKEN;
 const SUPPORT_DATA_SOURCE = import.meta.env.VITE_SUPPORT_DATA_SOURCE;
 const REQUEST_TIMEOUT_MS = 10_000;
+
+const STATUS_ENDPOINT = "/api/horizon/bot/support/status";
+const ROOMS_ENDPOINT = "/api/horizon/bot/support/rooms";
+const ROOM_DETAIL_ENDPOINT = "/api/horizon/bot/support/rooms/:roomId";
+const ROOM_CHAT_ENDPOINT = "/api/horizon/bot/support/rooms/:roomId/chat";
 
 export interface StreamlineSupportStatus {
   connected: boolean;
@@ -27,7 +33,11 @@ export interface StreamlineDiagnostics {
   configured: boolean;
   baseUrl: string;
   supportDataSource?: string;
+  authConfigured: boolean;
+  strictValidation: boolean;
   lastUpdatedAt?: string;
+  lastSuccessfulConnectionAt?: string;
+  lastFailedConnectionAt?: string;
   lastEndpoint?: string;
   lastUrl?: string;
   lastDurationMs?: number;
@@ -35,6 +45,42 @@ export interface StreamlineDiagnostics {
   lastErrorType?: "config" | "http" | "network" | "timeout" | "validation";
   lastErrorMessage?: string;
   lastValidationDetails?: string[];
+  endpointChecks: StreamlineEndpointCheck[];
+  validationChecks: StreamlineValidationCheck[];
+  polling: StreamlinePollingHealth;
+  recentErrors: StreamlineRecentError[];
+}
+
+export interface StreamlineEndpointCheck {
+  endpoint: string;
+  reachable: boolean | null;
+  httpStatusCode?: number;
+  responseTimeMs?: number;
+  validationPassed: boolean | null;
+  lastSuccessAt?: string;
+  lastFailureAt?: string;
+  errorMessage?: string;
+}
+
+export interface StreamlineValidationCheck {
+  key: "support-status" | "rooms" | "room-detail" | "room-chat";
+  endpoint: string;
+  valid: boolean | null;
+  details: string[];
+}
+
+export interface StreamlinePollingHealth {
+  enabled: boolean;
+  intervalMs?: number;
+  lastPollAttemptAt?: string;
+  consecutiveFailures: number;
+}
+
+export interface StreamlineRecentError {
+  timestamp: string;
+  endpoint: string;
+  category: "network" | "timeout" | "auth" | "validation" | "http" | "config";
+  message: string;
 }
 
 type UnknownRecord = Record<string, unknown>;
@@ -87,10 +133,134 @@ const diagnosticsState: StreamlineDiagnostics = {
   configured: false,
   baseUrl: "",
   supportDataSource: SUPPORT_DATA_SOURCE,
+  authConfigured: Boolean(STREAMLINE_API_TOKEN),
+  strictValidation: true,
+  endpointChecks: [
+    { endpoint: STATUS_ENDPOINT, reachable: null, validationPassed: null },
+    { endpoint: ROOMS_ENDPOINT, reachable: null, validationPassed: null },
+    { endpoint: ROOM_DETAIL_ENDPOINT, reachable: null, validationPassed: null },
+    { endpoint: ROOM_CHAT_ENDPOINT, reachable: null, validationPassed: null },
+  ],
+  validationChecks: [
+    { key: "support-status", endpoint: STATUS_ENDPOINT, valid: null, details: [] },
+    { key: "rooms", endpoint: ROOMS_ENDPOINT, valid: null, details: [] },
+    { key: "room-detail", endpoint: ROOM_DETAIL_ENDPOINT, valid: null, details: [] },
+    { key: "room-chat", endpoint: ROOM_CHAT_ENDPOINT, valid: null, details: [] },
+  ],
+  polling: {
+    enabled: false,
+    intervalMs: undefined,
+    lastPollAttemptAt: undefined,
+    consecutiveFailures: 0,
+  },
+  recentErrors: [],
 };
 
 function updateDiagnostics(patch: Partial<StreamlineDiagnostics>): void {
   Object.assign(diagnosticsState, patch, { lastUpdatedAt: new Date().toISOString() });
+}
+
+function normalizeEndpointPath(path: string): string {
+  if (/^\/api\/horizon\/bot\/support\/rooms\/[^/]+\/chat$/i.test(path)) {
+    return ROOM_CHAT_ENDPOINT;
+  }
+  if (/^\/api\/horizon\/bot\/support\/rooms\/[^/]+$/i.test(path)) {
+    return ROOM_DETAIL_ENDPOINT;
+  }
+  return path;
+}
+
+function validationKeyForEndpoint(endpoint: string): StreamlineValidationCheck["key"] | undefined {
+  const normalized = normalizeEndpointPath(endpoint);
+  if (normalized === STATUS_ENDPOINT) return "support-status";
+  if (normalized === ROOMS_ENDPOINT) return "rooms";
+  if (normalized === ROOM_DETAIL_ENDPOINT) return "room-detail";
+  if (normalized === ROOM_CHAT_ENDPOINT) return "room-chat";
+  return undefined;
+}
+
+function upsertEndpointCheck(endpoint: string, patch: Partial<StreamlineEndpointCheck>): void {
+  const normalized = normalizeEndpointPath(endpoint);
+  const existing = diagnosticsState.endpointChecks.find((item) => item.endpoint === normalized);
+  if (existing) {
+    Object.assign(existing, patch);
+    return;
+  }
+
+  diagnosticsState.endpointChecks.push({
+    endpoint: normalized,
+    reachable: null,
+    validationPassed: null,
+    ...patch,
+  });
+}
+
+function setValidationCheck(
+  key: StreamlineValidationCheck["key"],
+  endpoint: string,
+  valid: boolean,
+  details: string[] = [],
+): void {
+  const existing = diagnosticsState.validationChecks.find((item) => item.key === key);
+  if (existing) {
+    existing.endpoint = endpoint;
+    existing.valid = valid;
+    existing.details = details;
+    return;
+  }
+
+  diagnosticsState.validationChecks.push({ key, endpoint, valid, details });
+}
+
+function pushRecentError(error: StreamlineRecentError): void {
+  diagnosticsState.recentErrors = [error, ...diagnosticsState.recentErrors].slice(0, 10);
+}
+
+function markSuccess(endpoint: string, statusCode: number, responseTimeMs: number): void {
+  const timestamp = new Date().toISOString();
+  updateDiagnostics({
+    lastSuccessfulConnectionAt: timestamp,
+    lastEndpoint: normalizeEndpointPath(endpoint),
+    lastStatusCode: statusCode,
+    lastDurationMs: responseTimeMs,
+    lastErrorType: undefined,
+    lastErrorMessage: undefined,
+    lastValidationDetails: undefined,
+  });
+  upsertEndpointCheck(endpoint, {
+    reachable: true,
+    httpStatusCode: statusCode,
+    responseTimeMs,
+    lastSuccessAt: timestamp,
+    errorMessage: undefined,
+  });
+}
+
+function markFailure(
+  endpoint: string,
+  category: StreamlineRecentError["category"],
+  message: string,
+  patch?: Partial<StreamlineEndpointCheck>,
+): void {
+  const timestamp = new Date().toISOString();
+  updateDiagnostics({
+    lastFailedConnectionAt: timestamp,
+    lastEndpoint: normalizeEndpointPath(endpoint),
+    lastErrorType: category,
+    lastErrorMessage: message,
+  });
+  upsertEndpointCheck(endpoint, {
+    reachable: false,
+    lastFailureAt: timestamp,
+    errorMessage: message,
+    ...patch,
+  });
+  pushRecentError({
+    timestamp,
+    endpoint: normalizeEndpointPath(endpoint),
+    category,
+    message,
+  });
 }
 
 export function getStreamlineDiagnostics(): StreamlineDiagnostics {
@@ -98,7 +268,113 @@ export function getStreamlineDiagnostics(): StreamlineDiagnostics {
   diagnosticsState.baseUrl = baseUrl;
   diagnosticsState.configured = Boolean(baseUrl);
   diagnosticsState.supportDataSource = SUPPORT_DATA_SOURCE;
+  diagnosticsState.authConfigured = Boolean(STREAMLINE_API_TOKEN);
+  diagnosticsState.strictValidation = true;
   return { ...diagnosticsState };
+}
+
+export function clearStreamlineDiagnostics(): void {
+  diagnosticsState.lastUpdatedAt = undefined;
+  diagnosticsState.lastSuccessfulConnectionAt = undefined;
+  diagnosticsState.lastFailedConnectionAt = undefined;
+  diagnosticsState.lastEndpoint = undefined;
+  diagnosticsState.lastUrl = undefined;
+  diagnosticsState.lastDurationMs = undefined;
+  diagnosticsState.lastStatusCode = undefined;
+  diagnosticsState.lastErrorType = undefined;
+  diagnosticsState.lastErrorMessage = undefined;
+  diagnosticsState.lastValidationDetails = undefined;
+  diagnosticsState.endpointChecks = [
+    { endpoint: STATUS_ENDPOINT, reachable: null, validationPassed: null },
+    { endpoint: ROOMS_ENDPOINT, reachable: null, validationPassed: null },
+    { endpoint: ROOM_DETAIL_ENDPOINT, reachable: null, validationPassed: null },
+    { endpoint: ROOM_CHAT_ENDPOINT, reachable: null, validationPassed: null },
+  ];
+  diagnosticsState.validationChecks = [
+    { key: "support-status", endpoint: STATUS_ENDPOINT, valid: null, details: [] },
+    { key: "rooms", endpoint: ROOMS_ENDPOINT, valid: null, details: [] },
+    { key: "room-detail", endpoint: ROOM_DETAIL_ENDPOINT, valid: null, details: [] },
+    { key: "room-chat", endpoint: ROOM_CHAT_ENDPOINT, valid: null, details: [] },
+  ];
+  diagnosticsState.polling = {
+    enabled: false,
+    intervalMs: undefined,
+    lastPollAttemptAt: undefined,
+    consecutiveFailures: 0,
+  };
+  diagnosticsState.recentErrors = [];
+}
+
+export function updateStreamlinePollingHealth(params: {
+  enabled: boolean;
+  intervalMs?: number;
+  success?: boolean;
+}): void {
+  const next = diagnosticsState.polling;
+  next.enabled = params.enabled;
+  next.intervalMs = params.intervalMs;
+  next.lastPollAttemptAt = new Date().toISOString();
+  if (params.success === true) {
+    next.consecutiveFailures = 0;
+  } else if (params.success === false) {
+    next.consecutiveFailures += 1;
+  }
+}
+
+export async function runStreamlineDiagnosticsChecks(): Promise<StreamlineDiagnostics> {
+  clearStreamlineDiagnostics();
+
+  try {
+    await fetchSupportStatus();
+  } catch {
+    // diagnostics state is updated by the client
+  }
+
+  let firstRoomId: string | undefined;
+  try {
+    const rooms = await fetchRooms();
+    firstRoomId = rooms[0]?.id;
+  } catch {
+    // diagnostics state is updated by the client
+  }
+
+  if (firstRoomId) {
+    try {
+      await fetchRoomDetails(firstRoomId);
+    } catch {
+      // diagnostics state is updated by the client
+    }
+
+    try {
+      await fetchRoomChat(firstRoomId);
+    } catch {
+      // diagnostics state is updated by the client
+    }
+  }
+
+  return getStreamlineDiagnostics();
+}
+
+export function formatStreamlineDiagnosticsReport(diagnostics = getStreamlineDiagnostics()): string {
+  const lines = [
+    "StreamLine Diagnostics Report",
+    `Mode: ${diagnostics.supportDataSource || "default"}`,
+    `Base URL: ${diagnostics.baseUrl || "-"}`,
+    `Auth Configured: ${diagnostics.authConfigured ? "yes" : "no"}`,
+    `Strict Validation: ${diagnostics.strictValidation ? "yes" : "no"}`,
+    `Last Success: ${diagnostics.lastSuccessfulConnectionAt || "-"}`,
+    `Last Failure: ${diagnostics.lastFailedConnectionAt || "-"}`,
+    "",
+    "Endpoint Checks:",
+    ...diagnostics.endpointChecks.map((item) => (
+      `${item.endpoint} | reachable=${item.reachable === null ? "unknown" : item.reachable ? "yes" : "no"} | status=${item.httpStatusCode ?? "-"} | validation=${item.validationPassed === null ? "unknown" : item.validationPassed ? "pass" : "fail"} | error=${item.errorMessage || "-"}`
+    )),
+    "",
+    "Recent Errors:",
+    ...diagnostics.recentErrors.map((item) => `${item.timestamp} | ${item.endpoint} | ${item.category} | ${item.message}`),
+  ];
+
+  return lines.join("\n");
 }
 
 function normalizeBaseUrl(url?: string): string {
@@ -131,11 +407,22 @@ function assertObject(endpoint: string, payload: unknown, field = "response"): U
 }
 
 function throwValidation(endpoint: string, details: string[], payload: unknown): never {
+  const validationKey = validationKeyForEndpoint(endpoint);
   updateDiagnostics({
     lastEndpoint: endpoint,
     lastErrorType: "validation",
     lastErrorMessage: "StreamLine returned unexpected data",
     lastValidationDetails: details,
+  });
+  upsertEndpointCheck(endpoint, {
+    validationPassed: false,
+    reachable: true,
+  });
+  if (validationKey) {
+    setValidationCheck(validationKey, normalizeEndpointPath(endpoint), false, details);
+  }
+  markFailure(endpoint, "validation", "StreamLine returned unexpected data", {
+    validationPassed: false,
   });
 
   if (import.meta.env.DEV) {
@@ -311,6 +598,11 @@ export async function apiFetch(path: string): Promise<unknown> {
       lastValidationDetails: undefined,
       lastStatusCode: undefined,
     });
+    markFailure(path, "config", "VITE_STREAMLINE_API_BASE_URL is not configured", {
+      validationPassed: null,
+      httpStatusCode: undefined,
+      responseTimeMs: undefined,
+    });
     throw new Error("VITE_STREAMLINE_API_BASE_URL is not configured");
   }
 
@@ -344,6 +636,11 @@ export async function apiFetch(path: string): Promise<unknown> {
         lastErrorMessage: `HTTP ${response.status} ${response.statusText}`,
         lastValidationDetails: undefined,
       });
+      markFailure(path, response.status === 401 || response.status === 403 ? "auth" : "http", `HTTP ${response.status} ${response.statusText}`, {
+        httpStatusCode: response.status,
+        responseTimeMs: duration,
+        validationPassed: null,
+      });
 
       if (import.meta.env.DEV) {
         console.error("[streamlineApi] Request failed", {
@@ -368,6 +665,7 @@ export async function apiFetch(path: string): Promise<unknown> {
       lastErrorMessage: undefined,
       lastValidationDetails: undefined,
     });
+    markSuccess(path, response.status, duration);
 
     if (!text) return null;
 
@@ -397,6 +695,9 @@ export async function apiFetch(path: string): Promise<unknown> {
         lastErrorMessage: `StreamLine API request timed out after ${REQUEST_TIMEOUT_MS}ms`,
         lastValidationDetails: undefined,
       });
+      markFailure(path, "timeout", `StreamLine API request timed out after ${REQUEST_TIMEOUT_MS}ms`, {
+        responseTimeMs: duration,
+      });
       throw new Error(`StreamLine API request timed out after ${REQUEST_TIMEOUT_MS}ms`);
     }
 
@@ -410,6 +711,9 @@ export async function apiFetch(path: string): Promise<unknown> {
         lastErrorType: "network",
         lastErrorMessage: error instanceof Error ? error.message : "StreamLine API request failed",
         lastValidationDetails: undefined,
+      });
+      markFailure(path, "network", error instanceof Error ? error.message : "StreamLine API request failed", {
+        responseTimeMs: duration,
       });
     }
 
@@ -441,6 +745,9 @@ export async function fetchSupportStatus(): Promise<StreamlineSupportStatus> {
     throwValidation(endpoint, details, payload);
   }
 
+  setValidationCheck("support-status", endpoint, true, []);
+  upsertEndpointCheck(endpoint, { validationPassed: true });
+
   return {
     connected: statusObj.ok as boolean,
     status: (statusObj.ok as boolean) ? "healthy" : "down",
@@ -457,7 +764,7 @@ export async function fetchRooms(): Promise<Room[]> {
     throwValidation(endpoint, ["response must be an array of room items"], payload);
   }
 
-  return rows.map((row) => {
+  const mapped = rows.map((row) => {
     const contract = parseRoomContract(endpoint, row);
     const statusErrors: string[] = [];
     const status = validateRoomStatus(endpoint, contract.status, statusErrors);
@@ -478,6 +785,10 @@ export async function fetchRooms(): Promise<Room[]> {
     };
     return roomDetails;
   });
+
+  setValidationCheck("rooms", endpoint, true, []);
+  upsertEndpointCheck(endpoint, { validationPassed: true });
+  return mapped;
 }
 
 export async function fetchRoomDetails(roomId: string): Promise<StreamlineRoomDetails> {
@@ -490,6 +801,9 @@ export async function fetchRoomDetails(roomId: string): Promise<StreamlineRoomDe
   if (statusErrors.length > 0) {
     throwValidation(endpoint, statusErrors, payload);
   }
+
+  setValidationCheck("room-detail", endpoint, true, []);
+  upsertEndpointCheck(endpoint, { validationPassed: true });
 
   return {
     id: detail.id,
@@ -512,7 +826,7 @@ export async function fetchRoomChat(roomId: string): Promise<StreamlineRoomChatM
     throwValidation(endpoint, ["response must be an array of chat messages"], payload);
   }
 
-  return payload.map((message) => {
+  const messages = payload.map((message) => {
     const item = parseChatMessageContract(endpoint, message);
     return {
       id: item.id,
@@ -522,4 +836,8 @@ export async function fetchRoomChat(roomId: string): Promise<StreamlineRoomChatM
       createdAt: item.createdAt ?? new Date().toISOString(),
     };
   });
+
+  setValidationCheck("room-chat", endpoint, true, []);
+  upsertEndpointCheck(endpoint, { validationPassed: true });
+  return messages;
 }
