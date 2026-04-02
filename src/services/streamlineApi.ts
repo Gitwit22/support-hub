@@ -42,7 +42,7 @@ export interface StreamlineDiagnostics {
   lastUrl?: string;
   lastDurationMs?: number;
   lastStatusCode?: number;
-  lastErrorType?: "config" | "http" | "network" | "timeout" | "validation";
+  lastErrorType?: "config" | "http" | "network" | "timeout" | "validation" | "auth";
   lastErrorMessage?: string;
   lastValidationDetails?: string[];
   endpointChecks: StreamlineEndpointCheck[];

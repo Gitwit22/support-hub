@@ -2,14 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Activity,
-  AlertTriangle,
-  CheckCircle2,
   Copy,
   PlugZap,
   RefreshCw,
   Settings,
   Trash2,
-  XCircle,
 } from "lucide-react";
 import {
   clearStreamlineDiagnostics,
@@ -33,13 +30,14 @@ function StatusPill({ tone, label }: { tone: "green" | "yellow" | "red" | "gray"
 export default function AdminSettingsPage() {
   const [diagnostics, setDiagnostics] = useState<StreamlineDiagnostics>(() => getStreamlineDiagnostics());
   const [running, setRunning] = useState(false);
-  const [copyState, setCopyState] = useState<string | null>(null);
+  const [actionState, setActionState] = useState<string | null>(null);
 
-  const refreshDiagnostics = async () => {
+  const refreshDiagnostics = async (successMessage = "Connection test completed") => {
     setRunning(true);
     try {
       const next = await runStreamlineDiagnosticsChecks();
       setDiagnostics(next);
+      setActionState(successMessage);
     } finally {
       setRunning(false);
     }
@@ -62,15 +60,16 @@ export default function AdminSettingsPage() {
   const handleClear = () => {
     clearStreamlineDiagnostics();
     setDiagnostics(getStreamlineDiagnostics());
+    setActionState("Diagnostics cleared");
   };
 
   const handleCopy = async () => {
     const report = formatStreamlineDiagnosticsReport(diagnostics);
     try {
       await navigator.clipboard.writeText(report);
-      setCopyState("Diagnostics copied");
+      setActionState("Diagnostics copied");
     } catch {
-      setCopyState("Clipboard unavailable");
+      setActionState("Clipboard unavailable");
     }
   };
 
@@ -88,7 +87,7 @@ export default function AdminSettingsPage() {
             <RefreshCw className={`h-4 w-4 ${running ? "animate-spin" : ""}`} />
             Run Connection Test
           </Button>
-          <Button onClick={refreshDiagnostics} disabled={running} variant="outline" className="gap-2">
+          <Button onClick={() => refreshDiagnostics("All endpoint checks completed")} disabled={running} variant="outline" className="gap-2">
             <Activity className="h-4 w-4" />
             Recheck All Endpoints
           </Button>
@@ -103,7 +102,7 @@ export default function AdminSettingsPage() {
         </div>
       </div>
 
-      {copyState && <p className="text-sm text-muted-foreground">{copyState}</p>}
+      {actionState && <p className="text-sm text-muted-foreground">{actionState}</p>}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="rounded-lg border border-border bg-card p-5 space-y-4">
