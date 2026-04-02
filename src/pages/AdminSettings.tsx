@@ -83,7 +83,7 @@ export default function AdminSettingsPage() {
           <p className="mt-1 text-sm text-muted-foreground">StreamLine Connection & Health</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={refreshDiagnostics} disabled={running} className="gap-2">
+          <Button onClick={() => refreshDiagnostics("Connection test completed")} disabled={running} className="gap-2">
             <RefreshCw className={`h-4 w-4 ${running ? "animate-spin" : ""}`} />
             Run Connection Test
           </Button>
