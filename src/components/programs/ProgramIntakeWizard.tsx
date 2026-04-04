@@ -126,19 +126,24 @@ type ConnectionStatus = "idle" | "testing" | "success" | "failure";
 interface AddUsageItemFormProps {
   onAdd: (item: UsageItem) => void;
   onCancel: () => void;
+  existingKeys: string[];
 }
 
-function AddUsageItemForm({ onAdd, onCancel }: AddUsageItemFormProps) {
+function AddUsageItemForm({ onAdd, onCancel, existingKeys }: AddUsageItemFormProps) {
   const [label, setLabel] = useState("");
   const [unit, setUnit] = useState("");
   const [type, setType] = useState<"count" | "duration">("count");
 
+  const derivedKey = labelToKey(label.trim());
+  const keyEmpty = label.trim() !== "" && derivedKey === "";
+  const keyDuplicate = derivedKey !== "" && existingKeys.includes(derivedKey);
+  const canAdd = label.trim() !== "" && derivedKey !== "" && !keyDuplicate;
+
   const handleAdd = () => {
-    const trimmed = label.trim();
-    if (!trimmed) return;
+    if (!canAdd) return;
     onAdd({
-      key: labelToKey(trimmed),
-      label: trimmed,
+      key: derivedKey,
+      label: label.trim(),
       unit: unit.trim() || undefined,
       type,
     });
@@ -158,9 +163,17 @@ function AddUsageItemForm({ onAdd, onCancel }: AddUsageItemFormProps) {
           autoFocus
         />
         {label.trim() && (
-          <p className="text-xs text-muted-foreground">
-            Key: <span className="font-mono">{labelToKey(label.trim())}</span>
-          </p>
+          keyEmpty ? (
+            <p className="text-xs text-destructive">Label must contain at least one letter or digit.</p>
+          ) : keyDuplicate ? (
+            <p className="text-xs text-destructive">
+              Key <span className="font-mono">{derivedKey}</span> already exists. Use a different label.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Key: <span className="font-mono">{derivedKey}</span>
+            </p>
+          )
         )}
       </div>
       <div className="grid grid-cols-2 gap-2">
@@ -190,7 +203,7 @@ function AddUsageItemForm({ onAdd, onCancel }: AddUsageItemFormProps) {
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="button" size="sm" onClick={handleAdd} disabled={!label.trim()}>
+        <Button type="button" size="sm" onClick={handleAdd} disabled={!canAdd}>
           Add Item
         </Button>
       </div>
@@ -348,7 +361,7 @@ function StepProgramInfo({
         )}
 
         {showAddForm ? (
-          <AddUsageItemForm onAdd={addItem} onCancel={() => setShowAddForm(false)} />
+          <AddUsageItemForm onAdd={addItem} onCancel={() => setShowAddForm(false)} existingKeys={state.usageItems.map((i) => i.key)} />
         ) : (
           <Button
             type="button"

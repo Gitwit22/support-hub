@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { getUsageMetrics } from "@/lib/api/admin";
 import type { UsageMetrics } from "@/lib/types/admin";
+import type { UsageItem } from "@/lib/types/program";
 import { useProgram } from "@/lib/programs/ProgramContext";
 import { BarChart2, Clock } from "lucide-react";
 
@@ -13,6 +14,11 @@ const PERIOD_FILTERS: { key: UsagePeriod; label: string }[] = [
   { key: "30d",    label: "Last 30 Days" },
   { key: "all",    label: "All Time" },
 ];
+
+function formatMetricValue(value: number, item: UsageItem): string {
+  const formatted = value.toLocaleString();
+  return item.type === "duration" && item.unit ? `${formatted} ${item.unit}` : formatted;
+}
 
 export default function UsagePage() {
   const { activeProgramId, activeProgram } = useProgram();
@@ -78,9 +84,7 @@ export default function UsagePage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {usageItems.map((item) => {
             const raw = metrics[item.key] ?? 0;
-            const display = item.type === "duration"
-              ? `${raw.toLocaleString()}${item.unit ? ` ${item.unit}` : ""}`
-              : raw.toLocaleString();
+            const display = formatMetricValue(raw, item);
             const Icon = item.type === "duration" ? Clock : BarChart2;
             return (
               <div key={item.key} className="rounded-lg border border-border bg-card p-5">
