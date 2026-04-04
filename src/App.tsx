@@ -14,6 +14,7 @@ import AlertsPage from "./pages/AdminAlerts.tsx";
 import UsagePage from "./pages/AdminUsage.tsx";
 import WebhooksPage from "./pages/AdminWebhooks.tsx";
 import AdminSettingsPage from "./pages/AdminSettings.tsx";
+import BetaTestingPage from "./pages/BetaTesting.tsx";
 
 const queryClient = new QueryClient();
 
@@ -34,6 +35,7 @@ const App = () => (
             <Route path="/admin/usage" element={<UsagePage />} />
             <Route path="/admin/webhooks" element={<WebhooksPage />} />
             <Route path="/admin/settings" element={<AdminSettingsPage />} />
+            <Route path="/admin/beta-testing" element={<BetaTestingPage />} />
           </Route>
           {/* Legacy routes redirect to admin console */}
           <Route path="/" element={<Navigate to="/admin" replace />} />
