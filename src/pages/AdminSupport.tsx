@@ -4,8 +4,17 @@ import { AdminTicketFilters } from "@/components/support/AdminTicketFilters";
 import { AdminTicketList } from "@/components/support/AdminTicketList";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { listTickets, getTicket, updateTicket, addTicketMessage, closeTicket } from "@/lib/api/support";
-import type { Ticket, TicketFilters } from "@/lib/types/support";
+import type { Ticket, TicketFilters, SupportProduct } from "@/lib/types/support";
 import { AlertCircle, AlertTriangle, Clock, Inbox } from "lucide-react";
+import { useProgram } from "@/lib/programs/ProgramContext";
+
+/** Derive a SupportProduct filter value from a program slug.
+ *  StreamLine → "streamline-edu" (the existing scoped filter).
+ *  All other programs → undefined (no product filter; show all tickets). */
+function productForProgram(slug: string): SupportProduct | undefined {
+  if (slug === "streamline") return "streamline-edu";
+  return undefined;
+}
 
 export default function AdminSupportPage() {
   const [allEduTickets, setAllEduTickets] = useState<Ticket[]>([]);
@@ -13,24 +22,43 @@ export default function AdminSupportPage() {
   const [loading, setLoading] = useState(true);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [filters, setFilters] = useState<TicketFilters>({});
+  const { activeProgram } = useProgram();
+
+  const scopedProduct = productForProgram(activeProgram.slug);
+  const consoleTitle = scopedProduct === "streamline-edu"
+    ? "EDU Support Console"
+    : `${activeProgram.name} Support Console`;
+  const consoleSubtitle = scopedProduct === "streamline-edu"
+    ? "Manage incoming StreamLine EDU support tickets."
+    : `Manage incoming support tickets for ${activeProgram.name}.`;
+  const totalLabel = scopedProduct === "streamline-edu" ? "Total EDU" : "Total";
 
   const fetchTickets = useCallback(async () => {
     setLoading(true);
-    // Always scope to streamline-edu
-    const eduFilters: TicketFilters = { ...filters, product: "streamline-edu" };
-    const data = await listTickets(eduFilters);
+    const scopedFilters: TicketFilters = scopedProduct
+      ? { ...filters, product: scopedProduct }
+      : filters;
+    const data = await listTickets(scopedFilters);
     setTickets(data);
     setLoading(false);
-  }, [filters]);
+  }, [filters, scopedProduct]);
 
-  // Fetch all EDU tickets (unfiltered) for summary stats and school list
   const fetchAllEdu = useCallback(async () => {
-    const data = await listTickets({ product: "streamline-edu" });
+    const scopedFilters: TicketFilters = scopedProduct
+      ? { product: scopedProduct }
+      : {};
+    const data = await listTickets(scopedFilters);
     setAllEduTickets(data);
-  }, []);
+  }, [scopedProduct]);
 
   useEffect(() => { fetchTickets(); }, [fetchTickets]);
   useEffect(() => { fetchAllEdu(); }, [fetchAllEdu]);
+
+  // Reset selection and filters when the active program changes.
+  useEffect(() => {
+    setSelectedTicket(null);
+    setFilters({});
+  }, [activeProgram.id]);
 
   // Derive summary stats from unfiltered EDU tickets
   const stats = useMemo(() => {
@@ -81,15 +109,15 @@ export default function AdminSupportPage() {
     { label: "Open", value: stats.open, icon: AlertCircle, color: "text-info" },
     { label: "Urgent", value: stats.urgent, icon: AlertTriangle, color: "text-destructive" },
     { label: "Waiting on User", value: stats.waiting, icon: Clock, color: "text-warning" },
-    { label: "Total EDU", value: stats.total, icon: Inbox, color: "text-muted-foreground" },
+    { label: totalLabel, value: stats.total, icon: Inbox, color: "text-muted-foreground" },
   ];
 
   return (
     <div className="space-y-5">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-foreground">EDU Support Console</h1>
-        <p className="text-sm text-muted-foreground mt-1">Manage incoming StreamLine EDU support tickets.</p>
+        <h1 className="text-2xl font-bold text-foreground">{consoleTitle}</h1>
+        <p className="text-sm text-muted-foreground mt-1">{consoleSubtitle}</p>
       </div>
 
       {/* Summary cards */}

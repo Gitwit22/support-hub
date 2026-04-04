@@ -6,14 +6,26 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ProgramSwitcher } from "@/components/programs/ProgramSwitcher";
+import { useProgram } from "@/lib/programs/ProgramContext";
+import type { ProgramCapabilities } from "@/lib/types/program";
 
-const navItems = [
+interface NavItem {
+  label: string;
+  to: string;
+  icon: React.ElementType;
+  /** If set, the item is only shown when this capability is enabled.
+   *  Items without a capabilityKey are always shown. */
+  capabilityKey?: keyof ProgramCapabilities;
+}
+
+const navItems: NavItem[] = [
   { label: "Dashboard", to: "/admin", icon: LayoutDashboard },
-  { label: "Support", to: "/admin/support", icon: LifeBuoy },
-  { label: "Monitoring", to: "/admin/monitoring", icon: HeartPulse },
-  { label: "Diagnostics", to: "/admin/diagnostics", icon: Stethoscope },
-  { label: "Rooms", to: "/admin/rooms", icon: Radio },
-  { label: "Alerts", to: "/admin/alerts", icon: Bell },
+  { label: "Support", to: "/admin/support", icon: LifeBuoy, capabilityKey: "tickets" },
+  { label: "Monitoring", to: "/admin/monitoring", icon: HeartPulse, capabilityKey: "monitoring" },
+  { label: "Diagnostics", to: "/admin/diagnostics", icon: Stethoscope, capabilityKey: "diagnostics" },
+  { label: "Rooms", to: "/admin/rooms", icon: Radio, capabilityKey: "monitoring" },
+  { label: "Alerts", to: "/admin/alerts", icon: Bell, capabilityKey: "alerts" },
   { label: "Usage", to: "/admin/usage", icon: BarChart3 },
   { label: "Webhooks", to: "/admin/webhooks", icon: Webhook },
   { label: "Settings", to: "/admin/settings", icon: Settings },
@@ -23,6 +35,12 @@ const navItems = [
 export default function StreamLineShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const { activeProgram } = useProgram();
+
+  const visibleNavItems = navItems.filter((item) => {
+    if (!item.capabilityKey) return true;
+    return activeProgram.capabilities[item.capabilityKey];
+  });
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -41,14 +59,25 @@ export default function StreamLineShell() {
         "fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-sidebar-border bg-sidebar transition-transform lg:static lg:translate-x-0",
         sidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
-        <div className="flex h-16 items-center gap-2 border-b border-sidebar-border px-6">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary">
-            <span className="text-sm font-bold text-sidebar-primary-foreground">S</span>
+        {/* Header — program name + switcher */}
+        <div className="flex h-16 flex-col justify-center border-b border-sidebar-border px-4 gap-0.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-sidebar-primary flex-shrink-0">
+                <span className="text-xs font-bold text-sidebar-primary-foreground">
+                  {activeProgram.name.charAt(0).toUpperCase()}
+                </span>
+              </div>
+              <span className="text-sm font-bold text-sidebar-accent-foreground truncate max-w-[90px]">
+                {activeProgram.name}
+              </span>
+            </div>
+            <ProgramSwitcher />
           </div>
-          <span className="text-lg font-bold text-sidebar-accent-foreground">StreamLine</span>
         </div>
+
         <nav className="flex-1 space-y-1 p-4">
-          {navItems.map(item => (
+          {visibleNavItems.map(item => (
             <NavLink
               key={item.to}
               to={item.to}
