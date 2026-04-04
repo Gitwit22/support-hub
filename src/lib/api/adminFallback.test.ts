@@ -47,16 +47,7 @@ describe("admin API – empty fallback", () => {
 
   it("getUsageMetrics returns empty data on network error", async () => {
     const result = await getUsageMetrics();
-    expect(result).toEqual({
-      ticketsToday: 0,
-      activeUsers: 0,
-      roomsCreated: 0,
-      messagesSent: 0,
-      streamMinutes: 0,
-      apiRequests: 0,
-      recordingsCreated: 0,
-      hlsMinutes: 0,
-    });
+    expect(result).toEqual({});
   });
 
   it("listWebhooks returns empty data on network error", async () => {

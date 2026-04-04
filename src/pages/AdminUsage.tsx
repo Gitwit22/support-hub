@@ -1,11 +1,9 @@
 import { useState, useEffect } from "react";
 import { getUsageMetrics } from "@/lib/api/admin";
 import type { UsageMetrics } from "@/lib/types/admin";
+import type { UsageItem } from "@/lib/types/program";
 import { useProgram } from "@/lib/programs/ProgramContext";
-import {
-  TicketCheck, Users, Radio, MessageSquare, Clock, Zap,
-  Video, Tv,
-} from "lucide-react";
+import { BarChart2, Clock } from "lucide-react";
 
 type UsagePeriod = "recent" | "today" | "7d" | "30d" | "all";
 
@@ -16,6 +14,11 @@ const PERIOD_FILTERS: { key: UsagePeriod; label: string }[] = [
   { key: "30d",    label: "Last 30 Days" },
   { key: "all",    label: "All Time" },
 ];
+
+function formatMetricValue(value: number, item: UsageItem): string {
+  const formatted = value.toLocaleString();
+  return item.type === "duration" && item.unit ? `${formatted} ${item.unit}` : formatted;
+}
 
 export default function UsagePage() {
   const { activeProgramId, activeProgram } = useProgram();
@@ -34,16 +37,8 @@ export default function UsagePage() {
     });
   }, [period, activeProgramId]);
 
-  const cards = metrics ? [
-    { label: "Tickets",        value: metrics.ticketsToday,                    icon: TicketCheck,   color: "text-blue-500" },
-    { label: "Active Users",   value: metrics.activeUsers.toLocaleString(),     icon: Users,         color: "text-emerald-500" },
-    { label: "Rooms Created",  value: metrics.roomsCreated,                    icon: Radio,         color: "text-violet-500" },
-    { label: "Messages Sent",  value: metrics.messagesSent.toLocaleString(),   icon: MessageSquare, color: "text-sky-500" },
-    { label: "Stream Minutes", value: metrics.streamMinutes.toLocaleString(),  icon: Clock,         color: "text-amber-500" },
-    { label: "API Requests",   value: metrics.apiRequests.toLocaleString(),    icon: Zap,           color: "text-orange-500" },
-    { label: "Recordings",     value: metrics.recordingsCreated,               icon: Video,         color: "text-pink-500" },
-    { label: "HLS Minutes",    value: metrics.hlsMinutes.toLocaleString(),     icon: Tv,            color: "text-indigo-500" },
-  ] : [];
+  const usageItems = activeProgram.usageItems ?? [];
+  const cardCount = usageItems.length || 4;
 
   return (
     <div className="space-y-6">
@@ -71,23 +66,36 @@ export default function UsagePage() {
         ))}
       </div>
 
-      {loading || !metrics ? (
+      {usageItems.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border p-8 text-center">
+          <BarChart2 className="mx-auto h-8 w-8 text-muted-foreground mb-3" />
+          <p className="text-sm font-medium text-foreground">No usage items configured</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Add usage items when registering or editing this program to see metrics here.
+          </p>
+        </div>
+      ) : loading || !metrics ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => (
+          {Array.from({ length: cardCount }).map((_, i) => (
             <div key={i} className="h-28 animate-pulse rounded-lg bg-muted" />
           ))}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {cards.map((card) => (
-            <div key={card.label} className="rounded-lg border border-border bg-card p-5">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">{card.label}</p>
-                <card.icon className={`h-5 w-5 ${card.color}`} />
+          {usageItems.map((item) => {
+            const raw = metrics[item.key] ?? 0;
+            const display = formatMetricValue(raw, item);
+            const Icon = item.type === "duration" ? Clock : BarChart2;
+            return (
+              <div key={item.key} className="rounded-lg border border-border bg-card p-5">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-muted-foreground">{item.label}</p>
+                  <Icon className="h-5 w-5 text-primary/60" />
+                </div>
+                <p className="mt-2 text-3xl font-bold text-card-foreground">{display}</p>
               </div>
-              <p className="mt-2 text-3xl font-bold text-card-foreground">{card.value}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

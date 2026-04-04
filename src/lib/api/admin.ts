@@ -23,16 +23,7 @@ const EMPTY_MONITORING_OVERVIEW: MonitoringOverview = {
   checkedAt: now(),
 };
 
-const EMPTY_USAGE_METRICS: UsageMetrics = {
-  ticketsToday: 0,
-  activeUsers: 0,
-  roomsCreated: 0,
-  messagesSent: 0,
-  streamMinutes: 0,
-  apiRequests: 0,
-  recordingsCreated: 0,
-  hlsMinutes: 0,
-};
+const EMPTY_USAGE_METRICS: UsageMetrics = {};
 
 const EMPTY_ADMIN_DASHBOARD_SUMMARY: AdminDashboardSummary = {
   openTickets: 0,

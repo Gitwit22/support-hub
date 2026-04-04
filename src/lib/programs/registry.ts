@@ -50,6 +50,16 @@ const STREAMLINE_SEED: ProgramConfig = {
     webhooks: "/api/admin/webhooks",
     diagnostics: "/api/admin/diagnostics",
   },
+  usageItems: [
+    { key: "ticketsToday",      label: "Tickets",        type: "count" },
+    { key: "activeUsers",       label: "Active Users",   type: "count" },
+    { key: "roomsCreated",      label: "Rooms Created",  type: "count" },
+    { key: "messagesSent",      label: "Messages Sent",  type: "count" },
+    { key: "streamMinutes",     label: "Stream Minutes", type: "duration", unit: "minutes" },
+    { key: "apiRequests",       label: "API Requests",   type: "count" },
+    { key: "recordingsCreated", label: "Recordings",     type: "count" },
+    { key: "hlsMinutes",        label: "HLS Minutes",    type: "duration", unit: "minutes" },
+  ],
   description: "StreamLine platform — reference integration for Support Hub",
   registeredAt: "2024-01-01T00:00:00.000Z",
 };

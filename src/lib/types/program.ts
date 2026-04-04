@@ -9,8 +9,24 @@ export type AuthMethod = "bearer" | "api-key" | "none";
 /**
  * Optional preset used during onboarding.  Affects only wizard defaults;
  * the stored config is fully generic after the wizard completes.
+ * @deprecated Presets are superseded by the `usageItems` field.
  */
 export type ProgramPreset = "streamline" | "horizon" | "community-hub" | "custom";
+
+/**
+ * A single usage metric that a program tracks.
+ * The `key` maps to the metric key returned by the /admin/usage API.
+ */
+export interface UsageItem {
+  /** Machine-readable identifier (e.g. "rooms_created"). */
+  key: string;
+  /** Human-readable display label (e.g. "Rooms Created"). */
+  label: string;
+  /** Optional unit label (e.g. "minutes", "plays"). */
+  unit?: string;
+  /** Semantic type — drives formatting and future charting. */
+  type: "count" | "duration";
+}
 
 /** Which functional modules a program has enabled. */
 export interface ProgramCapabilities {
@@ -72,6 +88,7 @@ export interface ProgramConfig {
   /**
    * Preset used during onboarding.  Stored so the wizard can show correct
    * defaults when editing, but has no runtime behavioral effect.
+   * @deprecated Presets are superseded by the `usageItems` field.
    */
   presetType?: ProgramPreset;
   /** Singular label for the primary resource type (e.g. "room", "ticket"). */
@@ -82,6 +99,11 @@ export interface ProgramConfig {
   auth: ProgramAuth;
   capabilities: ProgramCapabilities;
   endpoints: ProgramEndpoints;
+  /**
+   * Usage metrics this program tracks.  Each item maps to a key returned by
+   * the /admin/usage API and drives the dynamic Usage dashboard.
+   */
+  usageItems?: UsageItem[];
   /** Human-readable description shown in the switcher. */
   description?: string;
   /** ISO string — when the program was added to the registry. */
