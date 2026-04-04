@@ -117,9 +117,10 @@ export async function listAlerts(): Promise<Alert[]> {
 // Usage / Metering
 // ---------------------------------------------------------------------------
 
-export async function getUsageMetrics(): Promise<UsageMetrics> {
+export async function getUsageMetrics(period?: string): Promise<UsageMetrics> {
   try {
-    return await apiFetch<UsageMetrics>("/admin/usage");
+    const qs = period && period !== "all" ? `?period=${encodeURIComponent(period)}` : "";
+    return await apiFetch<UsageMetrics>(`/admin/usage${qs}`);
   } catch {
     return EMPTY_USAGE_METRICS;
   }
