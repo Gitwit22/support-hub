@@ -7,6 +7,7 @@
 import {
   createContext,
   useContext,
+  useEffect,
   useState,
   useCallback,
   useMemo,
@@ -63,11 +64,54 @@ const ProgramContext = createContext<ProgramContextValue | null>(null);
 // Provider
 // ---------------------------------------------------------------------------
 
+function isCommunityHubId(id: string): boolean {
+  return (
+    id.startsWith("community-hub") ||
+    id.includes("community-hub")
+  );
+}
+
 export function ProgramProvider({ children }: { children: ReactNode }) {
   const [activeProgram, setActiveProgram] = useState<ProgramConfig>(
     resolveInitialProgram
   );
   const [programs, setPrograms] = useState<ProgramConfig[]>(listPrograms);
+
+  // One-time startup eviction: remove any stale community hub entries that
+  // may have survived in React state from a hot-reload or prior session.
+  useEffect(() => {
+    const hasCommunityHub = programs.some(
+      (p) =>
+        isCommunityHubId(p.id) ||
+        p.slug === "community-hub" ||
+        p.presetType === "community-hub"
+    );
+
+    if (!hasCommunityHub) return;
+
+    const cleaned = programs.filter(
+      (p) =>
+        !isCommunityHubId(p.id) &&
+        p.slug !== "community-hub" &&
+        p.presetType !== "community-hub"
+    );
+    setPrograms(cleaned);
+
+    if (
+      isCommunityHubId(activeProgram.id) ||
+      activeProgram.slug === "community-hub" ||
+      activeProgram.presetType === "community-hub"
+    ) {
+      const fallback = cleaned[0] ?? getDefaultProgram();
+      setActiveProgram(fallback);
+      try {
+        localStorage.setItem(STORAGE_KEY, fallback.id);
+      } catch {
+        // ignore
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const refreshPrograms = useCallback(() => {
     setPrograms(listPrograms());

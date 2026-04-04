@@ -134,7 +134,7 @@ export function getDefaultProgram(): ProgramConfig {
  * Built-in seeds cannot be overwritten.
  */
 export function registerProgram(config: ProgramConfig): void {
-  if (BUILT_IN_IDS.has(config.id) || isDeprecatedCommunityHubProgram(config)) {
+  if (BUILT_IN_IDS.has(config.id)) {
     // Built-in seeds are immutable from the UI.
     return;
   }
