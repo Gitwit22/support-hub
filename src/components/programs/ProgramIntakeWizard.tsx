@@ -1,5 +1,5 @@
-// ---------------------------------------------------------------------------
-// ProgramIntakeWizard — 5-step guided wizard for onboarding a new program.
+﻿// ---------------------------------------------------------------------------
+// ProgramIntakeWizard â€” 5-step guided wizard for onboarding a new program.
 // ---------------------------------------------------------------------------
 
 import { useState, useCallback } from "react";
@@ -22,31 +22,29 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, XCircle, Loader2, ChevronRight, ChevronLeft } from "lucide-react";
-import type { ProgramConfig, ProgramCapabilities, ProgramEndpoints, ProgramEnvironment, AuthMethod } from "@/lib/types/program";
+import type {
+  ProgramConfig,
+  ProgramCapabilities,
+  ProgramEndpoints,
+  ProgramEnvironment,
+  AuthMethod,
+  ProgramPreset,
+} from "@/lib/types/program";
 import { useProgram } from "@/lib/programs/ProgramContext";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
-// Wizard state shape
+// Preset defaults
 // ---------------------------------------------------------------------------
 
-interface WizardState {
-  // Step 1 — Basic Info
-  name: string;
-  slug: string;
-  environment: ProgramEnvironment;
+interface PresetDefaults {
+  label: string;
   description: string;
-
-  // Step 2 — API Connection
-  apiBaseUrl: string;
   healthEndpoint: string;
-  authMethod: AuthMethod;
-
-  // Step 3 — Module Selection
   capabilities: ProgramCapabilities;
-
-  // Step 4 — Endpoint Mapping
   endpoints: ProgramEndpoints;
+  resourceLabel: string;
+  systemName: string;
 }
 
 const DEFAULT_CAPABILITIES: ProgramCapabilities = {
@@ -59,13 +57,115 @@ const DEFAULT_CAPABILITIES: ProgramCapabilities = {
   diagnostics: false,
 };
 
+const PRESET_DEFAULTS: Record<ProgramPreset, PresetDefaults> = {
+  streamline: {
+    label: "StreamLine",
+    description: "Full-featured integration: monitoring, tickets, alerts, diagnostics.",
+    healthEndpoint: "/api/horizon/bot/support/status",
+    systemName: "StreamLine",
+    resourceLabel: "room",
+    capabilities: {
+      monitoring: true, tickets: true, logs: false, metrics: true,
+      alerts: true, chat: false, diagnostics: true,
+    },
+    endpoints: {
+      health: "/api/horizon/bot/support/status",
+      status: "/api/horizon/bot/support/status",
+      resourceList: "/api/horizon/bot/support/rooms",
+      resourceDetail: "/api/horizon/bot/support/rooms/:id",
+      resourceActivity: "/api/horizon/bot/support/rooms/:id/chat",
+      alerts: "/api/admin/monitoring",
+      usage: "/api/admin/usage",
+      webhooks: "/api/admin/webhooks",
+      diagnostics: "/api/admin/diagnostics",
+    },
+  },
+  horizon: {
+    label: "Horizon",
+    description: "Horizon bot integration with monitoring and event streaming.",
+    healthEndpoint: "/api/horizon/status",
+    systemName: "Horizon",
+    resourceLabel: "session",
+    capabilities: {
+      monitoring: true, tickets: false, logs: false, metrics: true,
+      alerts: true, chat: false, diagnostics: true,
+    },
+    endpoints: {
+      health: "/api/horizon/status",
+      status: "/api/horizon/status",
+      eventsIngest: "/api/horizon/events",
+      alerts: "/api/horizon/alerts",
+      usage: "/api/horizon/usage",
+      diagnostics: "/api/horizon/diagnostics",
+      resourceList: "/api/horizon/sessions",
+      resourceDetail: "/api/horizon/sessions/:id",
+    },
+  },
+  "community-hub": {
+    label: "Community Hub",
+    description: "Lightweight connectivity, telemetry, and usage monitoring.",
+    healthEndpoint: "/health",
+    systemName: "Community Hub",
+    resourceLabel: "community",
+    capabilities: {
+      monitoring: true, tickets: false, logs: false, metrics: true,
+      alerts: false, chat: false, diagnostics: true,
+    },
+    endpoints: {
+      health: "/health",
+      status: "/status",
+      eventsIngest: "/events",
+      usage: "/usage",
+      diagnostics: "/diagnostics",
+    },
+  },
+  custom: {
+    label: "Custom",
+    description: "Start from scratch with a blank configuration.",
+    healthEndpoint: "/health",
+    systemName: "",
+    resourceLabel: "",
+    capabilities: { ...DEFAULT_CAPABILITIES },
+    endpoints: {},
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Wizard state shape
+// ---------------------------------------------------------------------------
+
+interface WizardState {
+  // Step 1 â€” Preset + Basic Info
+  preset: ProgramPreset;
+  name: string;
+  slug: string;
+  systemName: string;
+  resourceLabel: string;
+  environment: ProgramEnvironment;
+  description: string;
+
+  // Step 2 â€” API Connection
+  apiBaseUrl: string;
+  healthEndpoint: string;
+  authMethod: AuthMethod;
+
+  // Step 3 â€” Module Selection
+  capabilities: ProgramCapabilities;
+
+  // Step 4 â€” Endpoint Mapping (generic categories)
+  endpoints: ProgramEndpoints;
+}
+
 const INITIAL_STATE: WizardState = {
+  preset: "custom",
   name: "",
   slug: "",
+  systemName: "",
+  resourceLabel: "",
   environment: "production",
   description: "",
   apiBaseUrl: "",
-  healthEndpoint: "/support/status",
+  healthEndpoint: "/health",
   authMethod: "bearer",
   capabilities: { ...DEFAULT_CAPABILITIES },
   endpoints: {},
@@ -101,6 +201,20 @@ type ConnectionStatus = "idle" | "testing" | "success" | "failure";
 // Step components
 // ---------------------------------------------------------------------------
 
+/** Endpoint category fields shown in Step 4. */
+const ENDPOINT_CATEGORIES: { field: keyof ProgramEndpoints; label: string; placeholder: string }[] = [
+  { field: "health",           label: "Health / ping",          placeholder: "/health" },
+  { field: "status",           label: "Status (detailed)",      placeholder: "/status" },
+  { field: "eventsIngest",     label: "Events / telemetry",     placeholder: "/events" },
+  { field: "alerts",           label: "Alerts feed",            placeholder: "/alerts" },
+  { field: "usage",            label: "Usage / metering",       placeholder: "/usage" },
+  { field: "webhooks",         label: "Webhook management",     placeholder: "/webhooks" },
+  { field: "diagnostics",      label: "Diagnostics self-check", placeholder: "/diagnostics" },
+  { field: "resourceList",     label: "Resource list",          placeholder: "/resources" },
+  { field: "resourceDetail",   label: "Resource detail (:id)",  placeholder: "/resources/:id" },
+  { field: "resourceActivity", label: "Resource activity (:id)",placeholder: "/resources/:id/activity" },
+];
+
 function StepProgramInfo({
   state,
   onChange,
@@ -108,13 +222,54 @@ function StepProgramInfo({
   state: WizardState;
   onChange: (patch: Partial<WizardState>) => void;
 }) {
+  const applyPreset = (preset: ProgramPreset) => {
+    const defaults = PRESET_DEFAULTS[preset];
+    onChange({
+      preset,
+      healthEndpoint: defaults.healthEndpoint,
+      systemName: defaults.systemName,
+      resourceLabel: defaults.resourceLabel,
+      capabilities: { ...defaults.capabilities },
+      endpoints: { ...defaults.endpoints },
+    });
+  };
+
   return (
     <div className="space-y-4">
+      {/* Preset picker */}
+      <div className="space-y-1.5">
+        <Label>Preset</Label>
+        <div className="grid grid-cols-2 gap-2">
+          {(Object.keys(PRESET_DEFAULTS) as ProgramPreset[]).map((key) => {
+            const p = PRESET_DEFAULTS[key];
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => applyPreset(key)}
+                className={cn(
+                  "rounded-lg border px-3 py-2.5 text-left transition-colors",
+                  state.preset === key
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:border-border/80"
+                )}
+              >
+                <p className="text-sm font-medium">{p.label}</p>
+                <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{p.description}</p>
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Presets fill in sensible defaults; you can customize everything below.
+        </p>
+      </div>
+
       <div className="space-y-1.5">
         <Label htmlFor="prog-name">Program Name *</Label>
         <Input
           id="prog-name"
-          placeholder="e.g. Horizon"
+          placeholder="e.g. My Platform"
           value={state.name}
           onChange={(e) => {
             const name = e.target.value;
@@ -123,17 +278,36 @@ function StepProgramInfo({
         />
       </div>
 
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <Label htmlFor="prog-system">System Name</Label>
+          <Input
+            id="prog-system"
+            placeholder="e.g. StreamLine"
+            value={state.systemName}
+            onChange={(e) => onChange({ systemName: e.target.value })}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="prog-resource">Resource Label</Label>
+          <Input
+            id="prog-resource"
+            placeholder="e.g. room, ticket, job"
+            value={state.resourceLabel}
+            onChange={(e) => onChange({ resourceLabel: e.target.value })}
+          />
+        </div>
+      </div>
+
       <div className="space-y-1.5">
         <Label htmlFor="prog-slug">Slug *</Label>
         <Input
           id="prog-slug"
-          placeholder="e.g. horizon"
+          placeholder="e.g. my-platform"
           value={state.slug}
           onChange={(e) => onChange({ slug: slugify(e.target.value) })}
         />
-        <p className="text-xs text-muted-foreground">
-          Used in IDs and URLs. Auto-generated from name.
-        </p>
+        <p className="text-xs text-muted-foreground">Auto-generated from name. Used in IDs and URLs.</p>
       </div>
 
       <div className="space-y-1.5">
@@ -195,7 +369,7 @@ function StepApiConnection({
         <Label htmlFor="api-health">Health Endpoint *</Label>
         <Input
           id="api-health"
-          placeholder="/support/status"
+          placeholder="/health"
           value={state.healthEndpoint}
           onChange={(e) => onChange({ healthEndpoint: e.target.value })}
         />
@@ -254,11 +428,11 @@ function StepApiConnection({
 
 const MODULE_OPTIONS: { key: keyof ProgramCapabilities; label: string }[] = [
   { key: "monitoring", label: "Monitoring" },
-  { key: "tickets", label: "Tickets" },
-  { key: "logs", label: "Logs" },
-  { key: "metrics", label: "Metrics" },
-  { key: "alerts", label: "Alerts" },
-  { key: "chat", label: "Chat" },
+  { key: "tickets",    label: "Tickets" },
+  { key: "logs",       label: "Logs" },
+  { key: "metrics",    label: "Metrics" },
+  { key: "alerts",     label: "Alerts" },
+  { key: "chat",       label: "Chat" },
   { key: "diagnostics", label: "Diagnostics" },
 ];
 
@@ -311,140 +485,38 @@ function StepEndpointMapping({
   state: WizardState;
   onChange: (patch: Partial<WizardState>) => void;
 }) {
-  const updateEndpoint = (
-    module: keyof ProgramEndpoints,
-    field: string,
-    value: string
-  ) => {
+  const updateEndpoint = (field: keyof ProgramEndpoints, value: string) => {
     onChange({
-      endpoints: {
-        ...state.endpoints,
-        [module]: {
-          ...(state.endpoints[module] ?? {}),
-          [field]: value,
-        },
-      },
+      endpoints: { ...state.endpoints, [field]: value || undefined },
     });
   };
 
-  const hasMonitoring = state.capabilities.monitoring;
-  const hasTickets = state.capabilities.tickets;
-  const hasLogs = state.capabilities.logs;
-  const hasMetrics = state.capabilities.metrics;
-
-  if (!hasMonitoring && !hasTickets && !hasLogs && !hasMetrics) {
-    return (
-      <p className="text-sm text-muted-foreground py-4">
-        No modules with configurable endpoints are enabled. Go back to enable
-        modules first.
-      </p>
-    );
-  }
-
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Define API paths for each enabled module (relative to API base URL).
+        Define API paths for each category (relative to API base URL). Leave
+        blank to skip. Preset values have been pre-filled for you.
       </p>
-
-      {hasMonitoring && (
-        <div className="space-y-2">
-          <h4 className="text-sm font-semibold">Monitoring</h4>
-          <div className="grid grid-cols-1 gap-2">
-            {[
-              { field: "status", label: "Status endpoint" },
-              { field: "rooms", label: "Rooms list" },
-              { field: "roomDetail", label: "Room detail (:roomId)" },
-            ].map(({ field, label }) => (
-              <div key={field} className="flex items-center gap-2">
-                <Label className="w-36 flex-shrink-0 text-xs">{label}</Label>
-                <Input
-                  className="h-8 text-sm"
-                  placeholder={`/support/${field}`}
-                  value={
-                    (state.endpoints.monitoring as Record<string, string> | undefined)?.[field] ?? ""
-                  }
-                  onChange={(e) =>
-                    updateEndpoint("monitoring", field, e.target.value)
-                  }
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {hasTickets && (
-        <div className="space-y-2">
-          <h4 className="text-sm font-semibold">Tickets</h4>
-          <div className="grid grid-cols-1 gap-2">
-            {[
-              { field: "list", label: "List tickets" },
-              { field: "create", label: "Create ticket" },
-              { field: "detail", label: "Ticket detail (:id)" },
-            ].map(({ field, label }) => (
-              <div key={field} className="flex items-center gap-2">
-                <Label className="w-36 flex-shrink-0 text-xs">{label}</Label>
-                <Input
-                  className="h-8 text-sm"
-                  placeholder={`/api/tickets/${field}`}
-                  value={
-                    (state.endpoints.tickets as Record<string, string> | undefined)?.[field] ?? ""
-                  }
-                  onChange={(e) =>
-                    updateEndpoint("tickets", field, e.target.value)
-                  }
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {hasLogs && (
-        <div className="space-y-2">
-          <h4 className="text-sm font-semibold">Logs</h4>
-          <div className="flex items-center gap-2">
-            <Label className="w-36 flex-shrink-0 text-xs">List logs</Label>
+      <div className="space-y-2">
+        {ENDPOINT_CATEGORIES.map(({ field, label, placeholder }) => (
+          <div key={field} className="flex items-center gap-2">
+            <Label className="w-40 flex-shrink-0 text-xs">{label}</Label>
             <Input
               className="h-8 text-sm"
-              placeholder="/api/logs"
-              value={state.endpoints.logs?.list ?? ""}
-              onChange={(e) => updateEndpoint("logs", "list", e.target.value)}
+              placeholder={placeholder}
+              value={(state.endpoints[field] as string | undefined) ?? ""}
+              onChange={(e) => updateEndpoint(field, e.target.value)}
             />
           </div>
-        </div>
-      )}
-
-      {hasMetrics && (
-        <div className="space-y-2">
-          <h4 className="text-sm font-semibold">Metrics</h4>
-          <div className="flex items-center gap-2">
-            <Label className="w-36 flex-shrink-0 text-xs">Metrics overview</Label>
-            <Input
-              className="h-8 text-sm"
-              placeholder="/api/metrics"
-              value={state.endpoints.metrics?.overview ?? ""}
-              onChange={(e) =>
-                updateEndpoint("metrics", "overview", e.target.value)
-              }
-            />
-          </div>
-        </div>
-      )}
+        ))}
+      </div>
     </div>
   );
 }
 
-function StepSave({
-  state,
-}: {
-  state: WizardState;
-}) {
+function StepSave({ state }: { state: WizardState }) {
   const id = generateId(state.slug, state.environment);
-  const enabledModules = MODULE_OPTIONS.filter(
-    ({ key }) => state.capabilities[key]
-  ).map(({ label }) => label);
+  const enabledModules = MODULE_OPTIONS.filter(({ key }) => state.capabilities[key]).map(({ label }) => label);
 
   return (
     <div className="space-y-4">
@@ -462,15 +534,23 @@ function StepSave({
           <span className="w-28 text-muted-foreground">Name</span>
           <span className="font-medium">{state.name}</span>
         </div>
+        {state.systemName && (
+          <div className="flex gap-2">
+            <span className="w-28 text-muted-foreground">System</span>
+            <span>{state.systemName}</span>
+          </div>
+        )}
+        <div className="flex gap-2">
+          <span className="w-28 text-muted-foreground">Preset</span>
+          <span className="capitalize">{state.preset}</span>
+        </div>
         <div className="flex gap-2">
           <span className="w-28 text-muted-foreground">Environment</span>
-          <Badge variant="secondary" className="capitalize">
-            {state.environment}
-          </Badge>
+          <Badge variant="secondary" className="capitalize">{state.environment}</Badge>
         </div>
         <div className="flex gap-2">
           <span className="w-28 text-muted-foreground">API Base URL</span>
-          <span className="font-mono text-xs break-all">{state.apiBaseUrl}</span>
+          <span className="font-mono text-xs break-all">{state.apiBaseUrl || "(none)"}</span>
         </div>
         <div className="flex gap-2">
           <span className="w-28 text-muted-foreground">Health Path</span>
@@ -480,14 +560,18 @@ function StepSave({
           <span className="w-28 text-muted-foreground">Auth</span>
           <span className="capitalize">{state.authMethod}</span>
         </div>
+        {state.resourceLabel && (
+          <div className="flex gap-2">
+            <span className="w-28 text-muted-foreground">Resource</span>
+            <span>{state.resourceLabel}</span>
+          </div>
+        )}
         <div className="flex gap-2">
           <span className="w-28 text-muted-foreground">Modules</span>
           <div className="flex flex-wrap gap-1">
             {enabledModules.length > 0
               ? enabledModules.map((m) => (
-                  <Badge key={m} variant="outline" className="text-xs">
-                    {m}
-                  </Badge>
+                  <Badge key={m} variant="outline" className="text-xs">{m}</Badge>
                 ))
               : <span className="text-muted-foreground">None selected</span>}
           </div>
@@ -546,13 +630,11 @@ export function ProgramIntakeWizard({ open, onClose }: ProgramIntakeWizardProps)
         setConnectionMessage(`Connected (HTTP ${response.status})`);
       } else {
         setConnectionStatus("failure");
-        setConnectionMessage(`HTTP ${response.status} — server returned an error`);
+        setConnectionMessage(`HTTP ${response.status} â€” server returned an error`);
       }
     } catch (err) {
       setConnectionStatus("failure");
-      setConnectionMessage(
-        err instanceof Error ? err.message : "Connection failed"
-      );
+      setConnectionMessage(err instanceof Error ? err.message : "Connection failed");
     }
   };
 
@@ -562,6 +644,9 @@ export function ProgramIntakeWizard({ open, onClose }: ProgramIntakeWizardProps)
       id,
       name: wizardState.name.trim(),
       slug: wizardState.slug,
+      systemName: wizardState.systemName.trim() || undefined,
+      presetType: wizardState.preset,
+      resourceLabel: wizardState.resourceLabel.trim() || undefined,
       environment: wizardState.environment,
       description: wizardState.description.trim() || undefined,
       apiBaseUrl: wizardState.apiBaseUrl.trim(),
@@ -581,9 +666,7 @@ export function ProgramIntakeWizard({ open, onClose }: ProgramIntakeWizardProps)
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose(); }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>
-            {saved ? "Program Registered!" : "Add Program"}
-          </DialogTitle>
+          <DialogTitle>{saved ? "Program Registered!" : "Add Program"}</DialogTitle>
         </DialogHeader>
 
         {/* Progress bar */}
@@ -611,15 +694,11 @@ export function ProgramIntakeWizard({ open, onClose }: ProgramIntakeWizardProps)
               <p className="text-sm text-muted-foreground">
                 The program has been added to the registry and is now active.
               </p>
-              <Button onClick={handleClose} className="mt-2">
-                Done
-              </Button>
+              <Button onClick={handleClose} className="mt-2">Done</Button>
             </div>
           ) : (
             <>
-              {step === 0 && (
-                <StepProgramInfo state={wizardState} onChange={updateState} />
-              )}
+              {step === 0 && <StepProgramInfo state={wizardState} onChange={updateState} />}
               {step === 1 && (
                 <StepApiConnection
                   state={wizardState}
@@ -629,12 +708,8 @@ export function ProgramIntakeWizard({ open, onClose }: ProgramIntakeWizardProps)
                   onTestConnection={testConnection}
                 />
               )}
-              {step === 2 && (
-                <StepModules state={wizardState} onChange={updateState} />
-              )}
-              {step === 3 && (
-                <StepEndpointMapping state={wizardState} onChange={updateState} />
-              )}
+              {step === 2 && <StepModules state={wizardState} onChange={updateState} />}
+              {step === 3 && <StepEndpointMapping state={wizardState} onChange={updateState} />}
               {step === 4 && <StepSave state={wizardState} />}
             </>
           )}
@@ -654,11 +729,7 @@ export function ProgramIntakeWizard({ open, onClose }: ProgramIntakeWizardProps)
             </Button>
 
             {step < STEPS.length - 1 ? (
-              <Button
-                size="sm"
-                onClick={() => setStep((s) => s + 1)}
-                disabled={!canAdvance()}
-              >
+              <Button size="sm" onClick={() => setStep((s) => s + 1)} disabled={!canAdvance()}>
                 Next
                 <ChevronRight className="ml-1 h-4 w-4" />
               </Button>
@@ -673,3 +744,4 @@ export function ProgramIntakeWizard({ open, onClose }: ProgramIntakeWizardProps)
     </Dialog>
   );
 }
+

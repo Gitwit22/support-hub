@@ -69,9 +69,9 @@ const EMPTY_WEBHOOK_DELIVERY_LOG: WebhookDeliveryLog = {
 // Monitoring / Health
 // ---------------------------------------------------------------------------
 
-export async function getMonitoringOverview(): Promise<MonitoringOverview> {
+export async function getMonitoringOverview(programId?: string): Promise<MonitoringOverview> {
   try {
-    return await apiFetch<MonitoringOverview>("/admin/monitoring");
+    return await apiFetch<MonitoringOverview>("/admin/monitoring", { programId });
   } catch {
     return EMPTY_MONITORING_OVERVIEW;
   }
@@ -81,9 +81,9 @@ export async function getMonitoringOverview(): Promise<MonitoringOverview> {
 // Diagnostics
 // ---------------------------------------------------------------------------
 
-export async function listDiagnostics(): Promise<DiagnosticEntry[]> {
+export async function listDiagnostics(programId?: string): Promise<DiagnosticEntry[]> {
   try {
-    return await apiFetch<DiagnosticEntry[]>("/admin/diagnostics");
+    return await apiFetch<DiagnosticEntry[]>("/admin/diagnostics", { programId });
   } catch {
     return [];
   }
@@ -93,9 +93,9 @@ export async function listDiagnostics(): Promise<DiagnosticEntry[]> {
 // Rooms
 // ---------------------------------------------------------------------------
 
-export async function listRooms(): Promise<Room[]> {
+export async function listRooms(programId?: string): Promise<Room[]> {
   try {
-    return await apiFetch<Room[]>("/admin/rooms");
+    return await apiFetch<Room[]>("/admin/rooms", { programId });
   } catch {
     return [];
   }
@@ -105,9 +105,9 @@ export async function listRooms(): Promise<Room[]> {
 // Alerts
 // ---------------------------------------------------------------------------
 
-export async function listAlerts(): Promise<Alert[]> {
+export async function listAlerts(programId?: string): Promise<Alert[]> {
   try {
-    return await apiFetch<Alert[]>("/admin/alerts");
+    return await apiFetch<Alert[]>("/admin/alerts", { programId });
   } catch {
     return [];
   }
@@ -117,10 +117,12 @@ export async function listAlerts(): Promise<Alert[]> {
 // Usage / Metering
 // ---------------------------------------------------------------------------
 
-export async function getUsageMetrics(period?: string): Promise<UsageMetrics> {
+export async function getUsageMetrics(period?: string, programId?: string): Promise<UsageMetrics> {
   try {
-    const qs = period && period !== "all" ? `?period=${encodeURIComponent(period)}` : "";
-    return await apiFetch<UsageMetrics>(`/admin/usage${qs}`);
+    const query = new URLSearchParams();
+    if (period && period !== "all") query.set("period", encodeURIComponent(period));
+    const qs = query.toString();
+    return await apiFetch<UsageMetrics>(`/admin/usage${qs ? `?${qs}` : ""}`, { programId });
   } catch {
     return EMPTY_USAGE_METRICS;
   }
@@ -130,9 +132,9 @@ export async function getUsageMetrics(period?: string): Promise<UsageMetrics> {
 // Webhooks
 // ---------------------------------------------------------------------------
 
-export async function listWebhooks(): Promise<Webhook[]> {
+export async function listWebhooks(programId?: string): Promise<Webhook[]> {
   try {
-    return await apiFetch<Webhook[]>("/admin/webhooks");
+    return await apiFetch<Webhook[]>("/admin/webhooks", { programId });
   } catch {
     return [];
   }
@@ -142,9 +144,9 @@ export async function listWebhooks(): Promise<Webhook[]> {
 // Dashboard Summary
 // ---------------------------------------------------------------------------
 
-export async function getAdminDashboardSummary(): Promise<AdminDashboardSummary> {
+export async function getAdminDashboardSummary(programId?: string): Promise<AdminDashboardSummary> {
   try {
-    return await apiFetch<AdminDashboardSummary>("/admin/dashboard");
+    return await apiFetch<AdminDashboardSummary>("/admin/dashboard", { programId });
   } catch {
     return EMPTY_ADMIN_DASHBOARD_SUMMARY;
   }
@@ -155,18 +157,18 @@ export async function getAdminDashboardSummary(): Promise<AdminDashboardSummary>
 // ---------------------------------------------------------------------------
 
 /** GET /api/admin/monitoring/overview — health summary (webhooks, active rooms, pending support) */
-export async function getMonitoringHealthSummary(): Promise<MonitoringHealthSummary> {
+export async function getMonitoringHealthSummary(programId?: string): Promise<MonitoringHealthSummary> {
   try {
-    return await apiFetch<MonitoringHealthSummary>("/admin/monitoring/overview");
+    return await apiFetch<MonitoringHealthSummary>("/admin/monitoring/overview", { programId });
   } catch {
     return EMPTY_MONITORING_HEALTH_SUMMARY;
   }
 }
 
-/** GET /api/admin/monitoring/services — service status (API, Firestore, LiveKit, hooks, Horizon) */
-export async function getMonitoringServiceStatus(): Promise<MonitoringServiceStatus> {
+/** GET /api/admin/monitoring/services — service status (API, Firestore, LiveKit, hooks, etc.) */
+export async function getMonitoringServiceStatus(programId?: string): Promise<MonitoringServiceStatus> {
   try {
-    return await apiFetch<MonitoringServiceStatus>("/admin/monitoring/services");
+    return await apiFetch<MonitoringServiceStatus>("/admin/monitoring/services", { programId });
   } catch {
     return EMPTY_MONITORING_SERVICE_STATUS;
   }
@@ -178,6 +180,7 @@ export async function getWebhookDeliveryLog(params?: {
   pageSize?: number;
   status?: string;
   event?: string;
+  programId?: string;
 }): Promise<WebhookDeliveryLog> {
   try {
     const query = new URLSearchParams();
@@ -186,34 +189,37 @@ export async function getWebhookDeliveryLog(params?: {
     if (params?.status) query.set("status", params.status);
     if (params?.event) query.set("event", params.event);
     const qs = query.toString();
-    return await apiFetch<WebhookDeliveryLog>(`/admin/monitoring/webhooks${qs ? `?${qs}` : ""}`);
+    return await apiFetch<WebhookDeliveryLog>(
+      `/admin/monitoring/webhooks${qs ? `?${qs}` : ""}`,
+      { programId: params?.programId },
+    );
   } catch {
     return EMPTY_WEBHOOK_DELIVERY_LOG;
   }
 }
 
-/** GET /api/admin/alerts — recent alerts from horizon_events */
-export async function getRecentAlerts(): Promise<Alert[]> {
+/** GET /api/admin/alerts — recent alerts */
+export async function getRecentAlerts(programId?: string): Promise<Alert[]> {
   try {
-    return await apiFetch<Alert[]>("/admin/alerts");
+    return await apiFetch<Alert[]>("/admin/alerts", { programId });
   } catch {
     return [];
   }
 }
 
 /** GET /api/admin/rooms/active — live rooms */
-export async function getActiveRooms(): Promise<ActiveRoom[]> {
+export async function getActiveRooms(programId?: string): Promise<ActiveRoom[]> {
   try {
-    return await apiFetch<ActiveRoom[]>("/admin/rooms/active");
+    return await apiFetch<ActiveRoom[]>("/admin/rooms/active", { programId });
   } catch {
     return [];
   }
 }
 
 /** GET /api/admin/support/tickets — support tickets */
-export async function getAdminSupportTickets(): Promise<AdminSupportTicket[]> {
+export async function getAdminSupportTickets(programId?: string): Promise<AdminSupportTicket[]> {
   try {
-    return await apiFetch<AdminSupportTicket[]>("/admin/support/tickets");
+    return await apiFetch<AdminSupportTicket[]>("/admin/support/tickets", { programId });
   } catch {
     return [];
   }

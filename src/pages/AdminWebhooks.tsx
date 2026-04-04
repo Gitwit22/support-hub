@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
+import { useProgram } from "@/lib/programs/ProgramContext";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -54,6 +55,7 @@ const EMPTY_FORM: WebhookFormState = { url: "", events: [] };
 // ---------------------------------------------------------------------------
 
 export default function WebhooksPage() {
+  const { activeProgramId, activeProgram } = useProgram();
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
   const [loading, setLoading] = useState(true);
   const [deliveryLog, setDeliveryLog] = useState<WebhookDeliveryLog | null>(null);
@@ -67,10 +69,18 @@ export default function WebhooksPage() {
   // Signing-secret visibility toggle per webhook id
   const [secretVisible, setSecretVisible] = useState<Record<string, boolean>>({});
 
+  // Re-fetch whenever the active program changes.
   useEffect(() => {
-    listWebhooks().then((w) => { setWebhooks(w); setLoading(false); });
-    getWebhookDeliveryLog({ pageSize: 10 }).then((d) => { setDeliveryLog(d); setLoadingDeliveries(false); });
-  }, []);
+    setLoading(true);
+    setLoadingDeliveries(true);
+    setWebhooks([]);
+    setDeliveryLog(null);
+    listWebhooks(activeProgramId).then((w) => { setWebhooks(w); setLoading(false); });
+    getWebhookDeliveryLog({ pageSize: 10, programId: activeProgramId }).then((d) => {
+      setDeliveryLog(d);
+      setLoadingDeliveries(false);
+    });
+  }, [activeProgramId]);
 
   // ---------------------------------------------------------------------------
   // Handlers
@@ -171,7 +181,8 @@ export default function WebhooksPage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Webhooks</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage webhook destinations, event subscriptions, and delivery history.
+            Webhook destinations, event subscriptions, and delivery history for{" "}
+            <span className="font-medium">{activeProgram.name}</span>.
           </p>
         </div>
         <Button onClick={openAddDialog} className="gap-2 shrink-0">

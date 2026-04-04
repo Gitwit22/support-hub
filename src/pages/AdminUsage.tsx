@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { getUsageMetrics } from "@/lib/api/admin";
 import type { UsageMetrics } from "@/lib/types/admin";
+import { useProgram } from "@/lib/programs/ProgramContext";
 import {
   TicketCheck, Users, Radio, MessageSquare, Clock, Zap,
   Video, Tv,
@@ -17,33 +18,40 @@ const PERIOD_FILTERS: { key: UsagePeriod; label: string }[] = [
 ];
 
 export default function UsagePage() {
+  const { activeProgramId, activeProgram } = useProgram();
   const [period, setPeriod] = useState<UsagePeriod>("today");
   const [metrics, setMetrics] = useState<UsageMetrics | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    // period is passed as a query param; client-side fallback returns the same
-    // aggregate snapshot until the backend supports period-scoped metrics.
-    getUsageMetrics(period).then((m) => { setMetrics(m); setLoading(false); });
-  }, [period]);
+    setMetrics(null);
+    // Re-fetches whenever the active program or period changes.
+    // programId is forwarded as X-Program-Id so the backend can scope results.
+    getUsageMetrics(period, activeProgramId).then((m) => {
+      setMetrics(m);
+      setLoading(false);
+    });
+  }, [period, activeProgramId]);
 
   const cards = metrics ? [
-    { label: "Tickets",            value: metrics.ticketsToday,                icon: TicketCheck,   color: "text-blue-500" },
-    { label: "Active Users",       value: metrics.activeUsers.toLocaleString(),  icon: Users,         color: "text-emerald-500" },
-    { label: "Rooms Created",      value: metrics.roomsCreated,                icon: Radio,         color: "text-violet-500" },
-    { label: "Messages Sent",      value: metrics.messagesSent.toLocaleString(), icon: MessageSquare, color: "text-sky-500" },
-    { label: "Stream Minutes",     value: metrics.streamMinutes.toLocaleString(), icon: Clock,        color: "text-amber-500" },
-    { label: "API Requests",       value: metrics.apiRequests.toLocaleString(),  icon: Zap,           color: "text-orange-500" },
-    { label: "Recordings",         value: metrics.recordingsCreated,            icon: Video,         color: "text-pink-500" },
-    { label: "HLS Minutes",        value: metrics.hlsMinutes.toLocaleString(),  icon: Tv,            color: "text-indigo-500" },
+    { label: "Tickets",        value: metrics.ticketsToday,                    icon: TicketCheck,   color: "text-blue-500" },
+    { label: "Active Users",   value: metrics.activeUsers.toLocaleString(),     icon: Users,         color: "text-emerald-500" },
+    { label: "Rooms Created",  value: metrics.roomsCreated,                    icon: Radio,         color: "text-violet-500" },
+    { label: "Messages Sent",  value: metrics.messagesSent.toLocaleString(),   icon: MessageSquare, color: "text-sky-500" },
+    { label: "Stream Minutes", value: metrics.streamMinutes.toLocaleString(),  icon: Clock,         color: "text-amber-500" },
+    { label: "API Requests",   value: metrics.apiRequests.toLocaleString(),    icon: Zap,           color: "text-orange-500" },
+    { label: "Recordings",     value: metrics.recordingsCreated,               icon: Video,         color: "text-pink-500" },
+    { label: "HLS Minutes",    value: metrics.hlsMinutes.toLocaleString(),     icon: Tv,            color: "text-indigo-500" },
   ] : [];
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Usage</h1>
-        <p className="text-sm text-muted-foreground mt-1">Platform usage and metering overview.</p>
+        <p className="text-sm text-muted-foreground mt-1">
+          Platform usage and metering for <span className="font-medium">{activeProgram.name}</span>.
+        </p>
       </div>
 
       {/* Period filter — drives ?period= query param on the API call */}

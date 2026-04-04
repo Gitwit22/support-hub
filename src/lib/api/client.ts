@@ -13,10 +13,18 @@ export class ApiError extends Error {
   }
 }
 
-function buildHeaders(options?: RequestInit, authToken?: string): HeadersInit {
+function buildHeaders(
+  options?: RequestInit,
+  authToken?: string,
+  programId?: string,
+): HeadersInit {
   return {
     "Content-Type": "application/json",
     ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+    // Allow the backend to route to the correct program-scoped dataset.
+    // All existing endpoints are still functional without this header;
+    // its presence is additive and ignored by backends that don't support it.
+    ...(programId ? { "X-Program-Id": programId } : {}),
     ...options?.headers,
   };
 }
@@ -35,14 +43,22 @@ async function requestJson<T>(url: string, options?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** Options accepted by apiFetch in addition to standard RequestInit. */
+export interface ApiFetchOptions extends Omit<RequestInit, "headers"> {
+  headers?: Record<string, string>;
+  /** When provided, sent as X-Program-Id header so the backend can scope data. */
+  programId?: string;
+}
+
 export async function apiFetch<T>(
   path: string,
-  options?: RequestInit,
+  options?: ApiFetchOptions,
 ): Promise<T> {
+  const { programId, ...fetchOpts } = options ?? {};
   const url = `${API_BASE_URL}${path}`;
   return requestJson<T>(url, {
-    ...options,
-    headers: buildHeaders(options),
+    ...fetchOpts,
+    headers: buildHeaders(fetchOpts, undefined, programId),
     credentials: "include",
   });
 }
