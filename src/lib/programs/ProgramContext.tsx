@@ -1,0 +1,128 @@
+// ---------------------------------------------------------------------------
+// Global active-program context.
+// Provides activeProgramId + the full ProgramConfig for the selected program.
+// Selection is persisted to localStorage so it survives page reloads.
+// ---------------------------------------------------------------------------
+
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useMemo,
+  type ReactNode,
+} from "react";
+import type { ProgramConfig } from "@/lib/types/program";
+import {
+  getDefaultProgram,
+  getProgramById,
+  listPrograms,
+  registerProgram,
+} from "@/lib/programs/registry";
+
+const STORAGE_KEY = "supportHubActiveProgramId";
+
+function resolveInitialProgram(): ProgramConfig {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      const found = getProgramById(stored);
+      if (found) return found;
+    }
+  } catch {
+    // Storage unavailable — fall through.
+  }
+  return getDefaultProgram();
+}
+
+// ---------------------------------------------------------------------------
+// Context shape
+// ---------------------------------------------------------------------------
+
+interface ProgramContextValue {
+  /** The currently selected program config. */
+  activeProgram: ProgramConfig;
+  /** Unique ID of the currently selected program. */
+  activeProgramId: string;
+  /** All registered programs. */
+  programs: ProgramConfig[];
+  /** Switch to a different program by ID. */
+  setActiveProgramId: (id: string) => void;
+  /** Add a new program to the registry and optionally make it active. */
+  addProgram: (config: ProgramConfig, makeActive?: boolean) => void;
+  /** Re-read the registry (e.g. after external changes). */
+  refreshPrograms: () => void;
+}
+
+const ProgramContext = createContext<ProgramContextValue | null>(null);
+
+// ---------------------------------------------------------------------------
+// Provider
+// ---------------------------------------------------------------------------
+
+export function ProgramProvider({ children }: { children: ReactNode }) {
+  const [activeProgram, setActiveProgram] = useState<ProgramConfig>(
+    resolveInitialProgram
+  );
+  const [programs, setPrograms] = useState<ProgramConfig[]>(listPrograms);
+
+  const refreshPrograms = useCallback(() => {
+    setPrograms(listPrograms());
+  }, []);
+
+  const setActiveProgramId = useCallback((id: string) => {
+    const found = getProgramById(id);
+    if (!found) return;
+    setActiveProgram(found);
+    try {
+      localStorage.setItem(STORAGE_KEY, id);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const addProgram = useCallback(
+    (config: ProgramConfig, makeActive = false) => {
+      registerProgram(config);
+      const updated = listPrograms();
+      setPrograms(updated);
+      if (makeActive) {
+        setActiveProgram(config);
+        try {
+          localStorage.setItem(STORAGE_KEY, config.id);
+        } catch {
+          // ignore
+        }
+      }
+    },
+    []
+  );
+
+  const value = useMemo<ProgramContextValue>(
+    () => ({
+      activeProgram,
+      activeProgramId: activeProgram.id,
+      programs,
+      setActiveProgramId,
+      addProgram,
+      refreshPrograms,
+    }),
+    [activeProgram, programs, setActiveProgramId, addProgram, refreshPrograms]
+  );
+
+  return (
+    <ProgramContext.Provider value={value}>{children}</ProgramContext.Provider>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
+
+export function useProgram(): ProgramContextValue {
+  const ctx = useContext(ProgramContext);
+  if (!ctx) {
+    throw new Error("useProgram must be used inside <ProgramProvider>");
+  }
+  return ctx;
+}

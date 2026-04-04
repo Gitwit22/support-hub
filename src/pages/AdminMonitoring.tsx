@@ -9,6 +9,7 @@ import {
   isStreamlineConfigured,
   isStreamlineValidationError,
 } from "@/services/streamlineApi";
+import { useProgram } from "@/lib/programs/ProgramContext";
 
 const statusConfig: Record<ServiceStatus, { label: string; color: string; bg: string; icon: typeof CheckCircle2 }> = {
   healthy:  { label: "Healthy",  color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950", icon: CheckCircle2 },
@@ -23,22 +24,52 @@ export default function MonitoringPage() {
   const [isConnected, setIsConnected] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [diagnosticsText, setDiagnosticsText] = useState<string[]>([]);
+  const { activeProgram } = useProgram();
+
+  // Determine whether to use the StreamLine direct API or the fallback admin API.
+  // For the StreamLine seed specifically, we honour the env-var driven configuration
+  // exactly as before so nothing is lost.  For other programs we use the admin fallback.
+  const isStreamlineProgram = activeProgram.slug === "streamline";
 
   useEffect(() => {
     let mounted = true;
 
     const loadStatus = async () => {
       try {
-        if (!isStreamlineConfigured()) {
+        if (isStreamlineProgram && isStreamlineConfigured()) {
+          // StreamLine: use the direct StreamLine API (existing behaviour).
+          const status = await fetchSupportStatus();
+          if (!mounted) return;
+
+          setIsConnected(status.connected);
+          setConnectionError(null);
+          setDiagnosticsText([]);
+          setOverview({
+            overallStatus: status.status,
+            checkedAt: status.checkedAt,
+            services: [
+              {
+                name: `${activeProgram.name} Support API`,
+                status: status.status,
+                checkedAt: status.checkedAt,
+                message: status.message,
+              },
+            ],
+          });
+        } else {
+          // All other programs (or StreamLine without env vars): fall back to the
+          // shared admin monitoring endpoint.
           const fallback = await getMonitoringOverview();
           if (!mounted) return;
 
           setOverview(fallback);
-          setIsConnected(fallback.services.length > 0 && fallback.overallStatus !== "down");
+          setIsConnected(
+            fallback.services.length > 0 && fallback.overallStatus !== "down"
+          );
           setConnectionError(null);
           if (fallback.services.length === 0) {
             setDiagnosticsText([
-              "Base URL: -",
+              `Program: ${activeProgram.name}`,
               "Source: default",
               "Endpoint: /admin/monitoring",
               "Status Code: -",
@@ -48,58 +79,46 @@ export default function MonitoringPage() {
           } else {
             setDiagnosticsText([]);
           }
-          return;
         }
-
-        const status = await fetchSupportStatus();
-        if (!mounted) return;
-
-        setIsConnected(status.connected);
-        setConnectionError(null);
-        setDiagnosticsText([]);
-        setOverview({
-          overallStatus: status.status,
-          checkedAt: status.checkedAt,
-          services: [
-            {
-              name: "StreamLine Support API",
-              status: status.status,
-              checkedAt: status.checkedAt,
-              message: status.message,
-            },
-          ],
-        });
       } catch (error) {
         if (!mounted) return;
 
         const now = new Date().toISOString();
         const message = isStreamlineValidationError(error)
-          ? "StreamLine returned unexpected data"
-          : "StreamLine connection unavailable";
+          ? `${activeProgram.name} returned unexpected data`
+          : `${activeProgram.name} connection unavailable`;
 
         setIsConnected(false);
         setConnectionError(message);
 
-        const d = getStreamlineDiagnostics();
-        const lines = [
-          `Base URL: ${d.baseUrl || "-"}`,
-          `Source: ${d.supportDataSource || "-"}`,
-          `Endpoint: ${d.lastEndpoint || "-"}`,
-          `Status Code: ${d.lastStatusCode ?? "-"}`,
-          `Error Type: ${d.lastErrorType || "-"}`,
-          `Error: ${d.lastErrorMessage || "-"}`,
-        ];
-        if (d.lastValidationDetails?.length) {
-          lines.push(`Validation: ${d.lastValidationDetails.join(" | ")}`);
+        if (isStreamlineProgram) {
+          const d = getStreamlineDiagnostics();
+          const lines = [
+            `Base URL: ${d.baseUrl || "-"}`,
+            `Source: ${d.supportDataSource || "-"}`,
+            `Endpoint: ${d.lastEndpoint || "-"}`,
+            `Status Code: ${d.lastStatusCode ?? "-"}`,
+            `Error Type: ${d.lastErrorType || "-"}`,
+            `Error: ${d.lastErrorMessage || "-"}`,
+          ];
+          if (d.lastValidationDetails?.length) {
+            lines.push(`Validation: ${d.lastValidationDetails.join(" | ")}`);
+          }
+          setDiagnosticsText(lines);
+        } else {
+          setDiagnosticsText([
+            `Program: ${activeProgram.name}`,
+            `API Base: ${activeProgram.apiBaseUrl || "-"}`,
+            `Error: ${message}`,
+          ]);
         }
-        setDiagnosticsText(lines);
 
         setOverview({
           overallStatus: "down",
           checkedAt: now,
           services: [
             {
-              name: "StreamLine Support API",
+              name: `${activeProgram.name} Support API`,
               status: "down",
               checkedAt: now,
               message,
@@ -111,12 +130,13 @@ export default function MonitoringPage() {
       }
     };
 
+    setLoading(true);
     loadStatus();
 
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [activeProgram, isStreamlineProgram]);
 
   if (loading || !overview) {
     return (
@@ -146,7 +166,9 @@ export default function MonitoringPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Monitoring</h1>
-          <p className="text-sm text-muted-foreground mt-1">Service health and system status.</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Service health for <span className="font-medium">{activeProgram.name}</span>.
+          </p>
           <p className={`mt-2 text-sm ${isConnected ? "text-emerald-600" : "text-destructive"}`}>
             {isConnected ? "● Connected" : "● Disconnected"}
           </p>
