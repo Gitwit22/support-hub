@@ -86,4 +86,39 @@ export interface ProgramConfig {
   description?: string;
   /** ISO string — when the program was added to the registry. */
   registeredAt: string;
+  /**
+   * Maps internal UsageMetrics keys (e.g. "roomsCreated") to the
+   * corresponding key in the API usage response (e.g. "rooms_created").
+   */
+  usageKeyMapping?: Record<string, string>;
+}
+
+// ---------------------------------------------------------------------------
+// Endpoint validation / diagnostics
+// ---------------------------------------------------------------------------
+
+/** Outcome of a single endpoint test. */
+export interface EndpointTestResult {
+  /** Endpoint key as defined in ProgramEndpoints (e.g. "health", "usage"). */
+  key: string;
+  /** The relative path that was tested. */
+  path: string;
+  /** Full URL used for the request. */
+  fullUrl: string;
+  /** HTTP status code returned, if the server was reachable. */
+  status?: number;
+  /** Round-trip time in milliseconds. */
+  responseTimeMs?: number;
+  /** True if the server responded (even with an error status). */
+  reachable: boolean;
+  /** True if the response shape looks correct for this endpoint category. */
+  validationPassed: boolean;
+  /** Human-readable reason string when validation or reachability fails. */
+  failureReason?: string;
+  /** ISO timestamp of when this test ran. */
+  lastTestedAt: string;
+  /** ISO timestamp of the most recent successful test, if any. */
+  lastSuccessAt?: string;
+  /** Top-level keys detected in the JSON response body (useful for mapping). */
+  detectedKeys?: string[];
 }

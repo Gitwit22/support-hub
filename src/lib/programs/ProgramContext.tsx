@@ -13,13 +13,15 @@ import {
   useMemo,
   type ReactNode,
 } from "react";
-import type { ProgramConfig } from "@/lib/types/program";
+import type { ProgramConfig, ProgramEndpoints } from "@/lib/types/program";
 import {
   getDefaultProgram,
   getProgramById,
   listPrograms,
   removeProgram as unregisterProgram,
   registerProgram,
+  updateProgramEndpoints as registryUpdateEndpoints,
+  updateProgramUsageMapping as registryUpdateUsageMapping,
 } from "@/lib/programs/registry";
 
 const STORAGE_KEY = "supportHubActiveProgramId";
@@ -56,6 +58,10 @@ interface ProgramContextValue {
   removeProgram: (id: string) => void;
   /** Re-read the registry (e.g. after external changes). */
   refreshPrograms: () => void;
+  /** Update the endpoint paths for the active program. */
+  updateProgramEndpoints: (endpoints: ProgramEndpoints) => void;
+  /** Update the usage key mapping for the active program. */
+  updateProgramUsageMapping: (mapping: Record<string, string>) => void;
 }
 
 const ProgramContext = createContext<ProgramContextValue | null>(null);
@@ -165,6 +171,28 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
     [activeProgram.id]
   );
 
+  const updateProgramEndpoints = useCallback(
+    (endpoints: ProgramEndpoints) => {
+      registryUpdateEndpoints(activeProgram.id, endpoints);
+      const updated = listPrograms();
+      setPrograms(updated);
+      const refreshed = updated.find((p) => p.id === activeProgram.id);
+      if (refreshed) setActiveProgram(refreshed);
+    },
+    [activeProgram.id]
+  );
+
+  const updateProgramUsageMapping = useCallback(
+    (mapping: Record<string, string>) => {
+      registryUpdateUsageMapping(activeProgram.id, mapping);
+      const updated = listPrograms();
+      setPrograms(updated);
+      const refreshed = updated.find((p) => p.id === activeProgram.id);
+      if (refreshed) setActiveProgram(refreshed);
+    },
+    [activeProgram.id]
+  );
+
   const value = useMemo<ProgramContextValue>(
     () => ({
       activeProgram,
@@ -174,8 +202,10 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
       addProgram,
       removeProgram,
       refreshPrograms,
+      updateProgramEndpoints,
+      updateProgramUsageMapping,
     }),
-    [activeProgram, programs, setActiveProgramId, addProgram, removeProgram, refreshPrograms]
+    [activeProgram, programs, setActiveProgramId, addProgram, removeProgram, refreshPrograms, updateProgramEndpoints, updateProgramUsageMapping]
   );
 
   return (
