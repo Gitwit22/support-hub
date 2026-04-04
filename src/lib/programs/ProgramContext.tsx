@@ -17,6 +17,7 @@ import {
   getDefaultProgram,
   getProgramById,
   listPrograms,
+  removeProgram as unregisterProgram,
   registerProgram,
 } from "@/lib/programs/registry";
 
@@ -50,6 +51,8 @@ interface ProgramContextValue {
   setActiveProgramId: (id: string) => void;
   /** Add a new program to the registry and optionally make it active. */
   addProgram: (config: ProgramConfig, makeActive?: boolean) => void;
+  /** Remove a user-added program by ID. Built-ins are protected. */
+  removeProgram: (id: string) => void;
   /** Re-read the registry (e.g. after external changes). */
   refreshPrograms: () => void;
 }
@@ -98,6 +101,26 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const removeProgram = useCallback(
+    (id: string) => {
+      const deletingActive = activeProgram.id === id;
+      unregisterProgram(id);
+      const updated = listPrograms();
+      setPrograms(updated);
+
+      if (!deletingActive) return;
+
+      const fallback = updated[0] ?? getDefaultProgram();
+      setActiveProgram(fallback);
+      try {
+        localStorage.setItem(STORAGE_KEY, fallback.id);
+      } catch {
+        // ignore
+      }
+    },
+    [activeProgram.id]
+  );
+
   const value = useMemo<ProgramContextValue>(
     () => ({
       activeProgram,
@@ -105,9 +128,10 @@ export function ProgramProvider({ children }: { children: ReactNode }) {
       programs,
       setActiveProgramId,
       addProgram,
+      removeProgram,
       refreshPrograms,
     }),
-    [activeProgram, programs, setActiveProgramId, addProgram, refreshPrograms]
+    [activeProgram, programs, setActiveProgramId, addProgram, removeProgram, refreshPrograms]
   );
 
   return (

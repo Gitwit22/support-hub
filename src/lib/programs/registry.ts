@@ -99,6 +99,11 @@ const COMMUNITY_HUB_SEED: ProgramConfig = {
 
 const BUILT_IN_IDS = new Set([STREAMLINE_SEED.id, COMMUNITY_HUB_SEED.id]);
 
+/** Returns true when the ID belongs to a built-in immutable seed. */
+export function isBuiltInProgram(id: string): boolean {
+  return BUILT_IN_IDS.has(id);
+}
+
 // ---------------------------------------------------------------------------
 // In-memory registry.  User-added programs (from the intake wizard) are
 // stored in localStorage and merged at runtime; built-in seeds are always

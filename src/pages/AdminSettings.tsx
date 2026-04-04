@@ -1,6 +1,20 @@
-﻿import { Link, Settings2 } from "lucide-react";
+﻿import { useState } from "react";
+import { Link, Settings2, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useProgram } from "@/lib/programs/ProgramContext";
 import type { ProgramConfig } from "@/lib/types/program";
+import { isBuiltInProgram } from "@/lib/programs/registry";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -20,6 +34,9 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 // ---------------------------------------------------------------------------
 
 function ProgramSettingsView({ program }: { program: ProgramConfig }) {
+  const { removeProgram } = useProgram();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const isBuiltIn = isBuiltInProgram(program.id);
   const enabledCaps = (
     Object.keys(program.capabilities) as (keyof typeof program.capabilities)[]
   ).filter((k) => program.capabilities[k]);
@@ -115,6 +132,47 @@ function ProgramSettingsView({ program }: { program: ProgramConfig }) {
           </p>
         </div>
       )}
+
+      <div className="rounded-lg border border-border bg-card p-5 space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold text-card-foreground">Program Management</h2>
+          <p className="text-sm text-muted-foreground">
+            Remove this program from Support Hub.
+          </p>
+        </div>
+
+        {isBuiltIn ? (
+          <p className="text-sm text-muted-foreground">
+            Built-in programs cannot be deleted.
+          </p>
+        ) : (
+          <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" className="gap-2">
+                <Trash2 className="h-4 w-4" />
+                Delete Program
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete {program.name}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This removes the program configuration from local registry storage. This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={() => removeProgram(program.id)}
+                >
+                  Delete Program
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
+      </div>
     </div>
   );
 }
