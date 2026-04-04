@@ -65,16 +65,12 @@ export interface Alert {
 }
 
 // Usage / Metering
-export interface UsageMetrics {
-  ticketsToday: number;
-  activeUsers: number;
-  roomsCreated: number;
-  messagesSent: number;
-  streamMinutes: number;
-  apiRequests: number;
-  recordingsCreated: number;
-  hlsMinutes: number;
-}
+/**
+ * Usage metrics returned by the /admin/usage endpoint.
+ * Keys map to `UsageItem.key` values defined in the program's `usageItems`.
+ * Values are always numeric counts or durations.
+ */
+export type UsageMetrics = Record<string, number>;
 
 // Webhooks
 export type WebhookStatus = "active" | "failing" | "disabled";

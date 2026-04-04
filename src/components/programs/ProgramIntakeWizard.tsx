@@ -1,5 +1,5 @@
-﻿// ---------------------------------------------------------------------------
-// ProgramIntakeWizard â€” 5-step guided wizard for onboarding a new program.
+// ---------------------------------------------------------------------------
+// ProgramIntakeWizard — 5-step guided wizard for onboarding a new program.
 // ---------------------------------------------------------------------------
 
 import { useState, useCallback } from "react";
@@ -21,30 +21,42 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, XCircle, Loader2, ChevronRight, ChevronLeft } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, ChevronRight, ChevronLeft, Plus, Trash2 } from "lucide-react";
 import type {
   ProgramConfig,
   ProgramCapabilities,
   ProgramEndpoints,
   ProgramEnvironment,
   AuthMethod,
-  ProgramPreset,
+  UsageItem,
 } from "@/lib/types/program";
 import { useProgram } from "@/lib/programs/ProgramContext";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
-// Preset defaults
+// Wizard state shape
 // ---------------------------------------------------------------------------
 
-interface PresetDefaults {
-  label: string;
-  description: string;
-  healthEndpoint: string;
-  capabilities: ProgramCapabilities;
-  endpoints: ProgramEndpoints;
-  resourceLabel: string;
+interface WizardState {
+  // Step 1 — Basic Info + Usage Items
+  name: string;
+  slug: string;
   systemName: string;
+  resourceLabel: string;
+  environment: ProgramEnvironment;
+  description: string;
+  usageItems: UsageItem[];
+
+  // Step 2 — API Connection
+  apiBaseUrl: string;
+  healthEndpoint: string;
+  authMethod: AuthMethod;
+
+  // Step 3 — Module Selection
+  capabilities: ProgramCapabilities;
+
+  // Step 4 — Endpoint Mapping (generic categories)
+  endpoints: ProgramEndpoints;
 }
 
 const DEFAULT_CAPABILITIES: ProgramCapabilities = {
@@ -57,113 +69,14 @@ const DEFAULT_CAPABILITIES: ProgramCapabilities = {
   diagnostics: false,
 };
 
-const PRESET_DEFAULTS: Record<ProgramPreset, PresetDefaults> = {
-  streamline: {
-    label: "StreamLine",
-    description: "Full-featured integration: monitoring, tickets, alerts, diagnostics.",
-    healthEndpoint: "/api/horizon/bot/support/status",
-    systemName: "StreamLine",
-    resourceLabel: "room",
-    capabilities: {
-      monitoring: true, tickets: true, logs: false, metrics: true,
-      alerts: true, chat: false, diagnostics: true,
-    },
-    endpoints: {
-      health: "/api/horizon/bot/support/status",
-      status: "/api/horizon/bot/support/status",
-      resourceList: "/api/horizon/bot/support/rooms",
-      resourceDetail: "/api/horizon/bot/support/rooms/:id",
-      resourceActivity: "/api/horizon/bot/support/rooms/:id/chat",
-      alerts: "/api/admin/monitoring",
-      usage: "/api/admin/usage",
-      webhooks: "/api/admin/webhooks",
-      diagnostics: "/api/admin/diagnostics",
-    },
-  },
-  horizon: {
-    label: "Horizon",
-    description: "Horizon bot integration with monitoring and event streaming.",
-    healthEndpoint: "/api/horizon/status",
-    systemName: "Horizon",
-    resourceLabel: "session",
-    capabilities: {
-      monitoring: true, tickets: false, logs: false, metrics: true,
-      alerts: true, chat: false, diagnostics: true,
-    },
-    endpoints: {
-      health: "/api/horizon/status",
-      status: "/api/horizon/status",
-      eventsIngest: "/api/horizon/events",
-      alerts: "/api/horizon/alerts",
-      usage: "/api/horizon/usage",
-      diagnostics: "/api/horizon/diagnostics",
-      resourceList: "/api/horizon/sessions",
-      resourceDetail: "/api/horizon/sessions/:id",
-    },
-  },
-  "community-hub": {
-    label: "Community Hub",
-    description: "Lightweight connectivity, telemetry, and usage monitoring.",
-    healthEndpoint: "/health",
-    systemName: "Community Hub",
-    resourceLabel: "community",
-    capabilities: {
-      monitoring: true, tickets: false, logs: false, metrics: true,
-      alerts: false, chat: false, diagnostics: true,
-    },
-    endpoints: {
-      health: "/health",
-      status: "/status",
-      eventsIngest: "/events",
-      usage: "/usage",
-      diagnostics: "/diagnostics",
-    },
-  },
-  custom: {
-    label: "Custom",
-    description: "Start from scratch with a blank configuration.",
-    healthEndpoint: "/health",
-    systemName: "",
-    resourceLabel: "",
-    capabilities: { ...DEFAULT_CAPABILITIES },
-    endpoints: {},
-  },
-};
-
-// ---------------------------------------------------------------------------
-// Wizard state shape
-// ---------------------------------------------------------------------------
-
-interface WizardState {
-  // Step 1 â€” Preset + Basic Info
-  preset: ProgramPreset;
-  name: string;
-  slug: string;
-  systemName: string;
-  resourceLabel: string;
-  environment: ProgramEnvironment;
-  description: string;
-
-  // Step 2 â€” API Connection
-  apiBaseUrl: string;
-  healthEndpoint: string;
-  authMethod: AuthMethod;
-
-  // Step 3 â€” Module Selection
-  capabilities: ProgramCapabilities;
-
-  // Step 4 â€” Endpoint Mapping (generic categories)
-  endpoints: ProgramEndpoints;
-}
-
 const INITIAL_STATE: WizardState = {
-  preset: "custom",
   name: "",
   slug: "",
   systemName: "",
   resourceLabel: "",
   environment: "production",
   description: "",
+  usageItems: [],
   apiBaseUrl: "",
   healthEndpoint: "/health",
   authMethod: "bearer",
@@ -195,7 +108,95 @@ function generateId(slug: string, env: ProgramEnvironment): string {
   return `${slug}-${env}`;
 }
 
+/** Convert a human label to a snake_case key: "Rooms Created" → "rooms_created" */
+function labelToKey(label: string): string {
+  return label
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
 type ConnectionStatus = "idle" | "testing" | "success" | "failure";
+
+// ---------------------------------------------------------------------------
+// Add Usage Item inline form
+// ---------------------------------------------------------------------------
+
+interface AddUsageItemFormProps {
+  onAdd: (item: UsageItem) => void;
+  onCancel: () => void;
+}
+
+function AddUsageItemForm({ onAdd, onCancel }: AddUsageItemFormProps) {
+  const [label, setLabel] = useState("");
+  const [unit, setUnit] = useState("");
+  const [type, setType] = useState<"count" | "duration">("count");
+
+  const handleAdd = () => {
+    const trimmed = label.trim();
+    if (!trimmed) return;
+    onAdd({
+      key: labelToKey(trimmed),
+      label: trimmed,
+      unit: unit.trim() || undefined,
+      type,
+    });
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-muted/40 p-3 space-y-3">
+      <p className="text-xs font-medium text-foreground">New Usage Item</p>
+      <div className="space-y-1.5">
+        <Label className="text-xs">Item Label *</Label>
+        <Input
+          className="h-8 text-sm"
+          placeholder='e.g. "Rooms Created"'
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+          autoFocus
+        />
+        {label.trim() && (
+          <p className="text-xs text-muted-foreground">
+            Key: <span className="font-mono">{labelToKey(label.trim())}</span>
+          </p>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-1.5">
+          <Label className="text-xs">Unit (optional)</Label>
+          <Input
+            className="h-8 text-sm"
+            placeholder="e.g. minutes"
+            value={unit}
+            onChange={(e) => setUnit(e.target.value)}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Type</Label>
+          <Select value={type} onValueChange={(v) => setType(v as "count" | "duration")}>
+            <SelectTrigger className="h-8 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="count">Count</SelectItem>
+              <SelectItem value="duration">Duration</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="flex gap-2 justify-end">
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button type="button" size="sm" onClick={handleAdd} disabled={!label.trim()}>
+          Add Item
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Step components
@@ -222,49 +223,19 @@ function StepProgramInfo({
   state: WizardState;
   onChange: (patch: Partial<WizardState>) => void;
 }) {
-  const applyPreset = (preset: ProgramPreset) => {
-    const defaults = PRESET_DEFAULTS[preset];
-    onChange({
-      preset,
-      healthEndpoint: defaults.healthEndpoint,
-      systemName: defaults.systemName,
-      resourceLabel: defaults.resourceLabel,
-      capabilities: { ...defaults.capabilities },
-      endpoints: { ...defaults.endpoints },
-    });
+  const [showAddForm, setShowAddForm] = useState(false);
+
+  const addItem = (item: UsageItem) => {
+    onChange({ usageItems: [...state.usageItems, item] });
+    setShowAddForm(false);
+  };
+
+  const removeItem = (key: string) => {
+    onChange({ usageItems: state.usageItems.filter((i) => i.key !== key) });
   };
 
   return (
     <div className="space-y-4">
-      {/* Preset picker */}
-      <div className="space-y-1.5">
-        <Label>Preset</Label>
-        <div className="grid grid-cols-2 gap-2">
-          {(Object.keys(PRESET_DEFAULTS) as ProgramPreset[]).map((key) => {
-            const p = PRESET_DEFAULTS[key];
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => applyPreset(key)}
-                className={cn(
-                  "rounded-lg border px-3 py-2.5 text-left transition-colors",
-                  state.preset === key
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-border/80"
-                )}
-              >
-                <p className="text-sm font-medium">{p.label}</p>
-                <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{p.description}</p>
-              </button>
-            );
-          })}
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Presets fill in sensible defaults; you can customize everything below.
-        </p>
-      </div>
-
       <div className="space-y-1.5">
         <Label htmlFor="prog-name">Program Name *</Label>
         <Input
@@ -335,6 +306,61 @@ function StepProgramInfo({
           value={state.description}
           onChange={(e) => onChange({ description: e.target.value })}
         />
+      </div>
+
+      {/* Usage Items */}
+      <div className="space-y-2">
+        <div>
+          <Label>Usage Items to Monitor</Label>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            What metrics should this program track? Each item maps to a key returned by the usage API.
+          </p>
+        </div>
+
+        {state.usageItems.length > 0 && (
+          <div className="space-y-1">
+            {state.usageItems.map((item) => (
+              <div
+                key={item.key}
+                className="flex items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-1.5"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-sm font-medium truncate">{item.label}</span>
+                  <span className="text-xs text-muted-foreground font-mono shrink-0">
+                    {item.key}
+                  </span>
+                  {item.unit && (
+                    <Badge variant="secondary" className="text-xs shrink-0">{item.unit}</Badge>
+                  )}
+                  <Badge variant="outline" className="text-xs shrink-0 capitalize">{item.type}</Badge>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeItem(item.key)}
+                  className="shrink-0 text-muted-foreground hover:text-destructive transition-colors"
+                  aria-label={`Remove ${item.label}`}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {showAddForm ? (
+          <AddUsageItemForm onAdd={addItem} onCancel={() => setShowAddForm(false)} />
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => setShowAddForm(true)}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add Usage Item
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -495,7 +521,7 @@ function StepEndpointMapping({
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
         Define API paths for each category (relative to API base URL). Leave
-        blank to skip. Preset values have been pre-filled for you.
+        blank to skip.
       </p>
       <div className="space-y-2">
         {ENDPOINT_CATEGORIES.map(({ field, label, placeholder }) => (
@@ -541,10 +567,6 @@ function StepSave({ state }: { state: WizardState }) {
           </div>
         )}
         <div className="flex gap-2">
-          <span className="w-28 text-muted-foreground">Preset</span>
-          <span className="capitalize">{state.preset}</span>
-        </div>
-        <div className="flex gap-2">
           <span className="w-28 text-muted-foreground">Environment</span>
           <Badge variant="secondary" className="capitalize">{state.environment}</Badge>
         </div>
@@ -576,6 +598,16 @@ function StepSave({ state }: { state: WizardState }) {
               : <span className="text-muted-foreground">None selected</span>}
           </div>
         </div>
+        {state.usageItems.length > 0 && (
+          <div className="flex gap-2">
+            <span className="w-28 text-muted-foreground shrink-0">Usage Items</span>
+            <div className="flex flex-wrap gap-1">
+              {state.usageItems.map((item) => (
+                <Badge key={item.key} variant="outline" className="text-xs">{item.label}</Badge>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -630,7 +662,7 @@ export function ProgramIntakeWizard({ open, onClose }: ProgramIntakeWizardProps)
         setConnectionMessage(`Connected (HTTP ${response.status})`);
       } else {
         setConnectionStatus("failure");
-        setConnectionMessage(`HTTP ${response.status} â€” server returned an error`);
+        setConnectionMessage(`HTTP ${response.status} — server returned an error`);
       }
     } catch (err) {
       setConnectionStatus("failure");
@@ -645,7 +677,6 @@ export function ProgramIntakeWizard({ open, onClose }: ProgramIntakeWizardProps)
       name: wizardState.name.trim(),
       slug: wizardState.slug,
       systemName: wizardState.systemName.trim() || undefined,
-      presetType: wizardState.preset,
       resourceLabel: wizardState.resourceLabel.trim() || undefined,
       environment: wizardState.environment,
       description: wizardState.description.trim() || undefined,
@@ -654,6 +685,7 @@ export function ProgramIntakeWizard({ open, onClose }: ProgramIntakeWizardProps)
       auth: { method: wizardState.authMethod },
       capabilities: wizardState.capabilities,
       endpoints: wizardState.endpoints,
+      usageItems: wizardState.usageItems.length > 0 ? wizardState.usageItems : undefined,
       registeredAt: new Date().toISOString(),
     };
     addProgram(config, true);
@@ -686,7 +718,7 @@ export function ProgramIntakeWizard({ open, onClose }: ProgramIntakeWizardProps)
         )}
 
         {/* Step content */}
-        <div className="py-2">
+        <div className="py-2 max-h-[60vh] overflow-y-auto pr-1">
           {saved ? (
             <div className="flex flex-col items-center gap-3 py-6 text-center">
               <CheckCircle2 className="h-12 w-12 text-emerald-500" />
@@ -744,4 +776,3 @@ export function ProgramIntakeWizard({ open, onClose }: ProgramIntakeWizardProps)
     </Dialog>
   );
 }
-
