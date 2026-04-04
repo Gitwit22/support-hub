@@ -692,7 +692,6 @@ function ProgramSettingsView({ program }: { program: ProgramConfig }) {
             </Button>
             <Button
               size="sm"
-              variant="outline"
               className="gap-1.5 text-xs"
               onClick={handleTestAll}
               disabled={testingAll}
@@ -702,20 +701,7 @@ function ProgramSettingsView({ program }: { program: ProgramConfig }) {
               ) : (
                 <PlayCircle className="h-3.5 w-3.5" />
               )}
-              Test All
-            </Button>
-            <Button
-              size="sm"
-              className="gap-1.5 text-xs"
-              onClick={handleTestAll}
-              disabled={testingAll}
-            >
-              {testingAll ? (
-                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="h-3.5 w-3.5" />
-              )}
-              Re-run Validation
+              Test All / Re-run Validation
             </Button>
           </div>
         </div>

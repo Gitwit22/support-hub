@@ -63,7 +63,7 @@ function validateShape(key: string, body: unknown): string | null {
     }
   }
 
-  if (key === "resourceList" || key === "alerts" || key === "webhooks" || key === "diagnostics") {
+  if (["resourceList", "alerts", "webhooks", "diagnostics"].includes(key)) {
     if (!Array.isArray(body)) {
       // Allow object wrappers like { data: [...] }
       if (typeof body === "object") {
@@ -101,23 +101,23 @@ export async function testEndpoint(
   baseUrl: string,
   auth: ProgramAuth
 ): Promise<EndpointTestResult> {
-  const fullUrl = (baseUrl.replace(/\/$/, "") + "/" + path.replace(/^\//, "")).replace(
-    /\/$/,
-    ""
-  );
   const now = new Date().toISOString();
 
   if (!baseUrl) {
     return {
       key,
       path,
-      fullUrl,
+      fullUrl: path,
       reachable: false,
       validationPassed: false,
       failureReason: "no API base URL configured",
       lastTestedAt: now,
     };
   }
+
+  const base = baseUrl.replace(/\/$/, "");
+  const relative = path.startsWith("/") ? path : `/${path}`;
+  const fullUrl = base + relative;
 
   const headers: Record<string, string> = {
     Accept: "application/json",
