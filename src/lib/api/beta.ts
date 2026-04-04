@@ -109,7 +109,10 @@ export async function createBetaEvent(
   const safePayload = payload as CreateBetaEventPayload;
   const enumErrors = validateEnums(safePayload);
   if (enumErrors.length > 0) {
-    throw new ValidationError(enumErrors, enumErrors.join("; "));
+    const invalidFields = enumErrors.map((msg) =>
+      msg.startsWith("eventType") ? "eventType" : "severity",
+    );
+    throw new ValidationError(invalidFields, enumErrors.join("; "));
   }
 
   // --- attempt real API call -----------------------------------------------
