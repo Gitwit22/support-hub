@@ -2,7 +2,7 @@
 // Central program registry.
 // StreamLine is seeded as the first registered program — it is the reference
 // integration and backward-compatibility baseline.
-// Community Hub is seeded second as a lightweight monitoring/telemetry profile.
+// Deprecated Community Hub entries are pruned from user storage.
 // ---------------------------------------------------------------------------
 
 import type { ProgramConfig } from "@/lib/types/program";
@@ -55,49 +55,18 @@ const STREAMLINE_SEED: ProgramConfig = {
 };
 
 // ---------------------------------------------------------------------------
-// Community Hub seed — lightweight monitoring / telemetry profile.
-// No room/Horizon-specific assumptions.
-// ---------------------------------------------------------------------------
-
-const COMMUNITY_HUB_SEED: ProgramConfig = {
-  id: "community-hub-prod",
-  name: "Community Hub",
-  slug: "community-hub",
-  systemName: "Community Hub",
-  presetType: "community-hub",
-  resourceLabel: "community",
-  environment: "production",
-  apiBaseUrl: "",
-  healthEndpoint: "/health",
-  auth: {
-    method: "bearer",
-    tokenLabel: "API Token",
-  },
-  capabilities: {
-    monitoring: true,
-    tickets: false,
-    logs: false,
-    metrics: true,
-    alerts: false,
-    chat: false,
-    diagnostics: true,
-  },
-  endpoints: {
-    health: "/health",
-    status: "/status",
-    eventsIngest: "/events",
-    usage: "/usage",
-    diagnostics: "/diagnostics",
-  },
-  description: "Community Hub — health, telemetry, and usage visibility",
-  registeredAt: "2024-01-01T00:00:00.000Z",
-};
-
-// ---------------------------------------------------------------------------
 // Built-in seeds — immutable from the UI.
 // ---------------------------------------------------------------------------
 
-const BUILT_IN_IDS = new Set([STREAMLINE_SEED.id, COMMUNITY_HUB_SEED.id]);
+const BUILT_IN_IDS = new Set([STREAMLINE_SEED.id]);
+
+function isDeprecatedCommunityHubProgram(program: ProgramConfig): boolean {
+  return (
+    program.id.startsWith("community-hub") ||
+    program.slug === "community-hub" ||
+    program.presetType === "community-hub"
+  );
+}
 
 /** Returns true when the ID belongs to a built-in immutable seed. */
 export function isBuiltInProgram(id: string): boolean {
@@ -117,7 +86,19 @@ function loadUserPrograms(): ProgramConfig[] {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as ProgramConfig[]) : [];
+    if (!Array.isArray(parsed)) return [];
+
+    const programs = parsed as ProgramConfig[];
+    const cleaned = programs.filter(
+      (program) => !isDeprecatedCommunityHubProgram(program)
+    );
+
+    // Persist cleanup so removed Community Hub entries do not come back.
+    if (cleaned.length !== programs.length) {
+      saveUserPrograms(cleaned);
+    }
+
+    return cleaned;
   } catch {
     return [];
   }
@@ -134,7 +115,7 @@ function saveUserPrograms(programs: ProgramConfig[]): void {
 /** Returns all registered programs.  Built-in seeds are always first. */
 export function listPrograms(): ProgramConfig[] {
   const user = loadUserPrograms().filter((p) => !BUILT_IN_IDS.has(p.id));
-  return [STREAMLINE_SEED, COMMUNITY_HUB_SEED, ...user];
+  return [STREAMLINE_SEED, ...user];
 }
 
 /** Looks up a program by ID. */
@@ -153,7 +134,7 @@ export function getDefaultProgram(): ProgramConfig {
  * Built-in seeds cannot be overwritten.
  */
 export function registerProgram(config: ProgramConfig): void {
-  if (BUILT_IN_IDS.has(config.id)) {
+  if (BUILT_IN_IDS.has(config.id) || isDeprecatedCommunityHubProgram(config)) {
     // Built-in seeds are immutable from the UI.
     return;
   }
