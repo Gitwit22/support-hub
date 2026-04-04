@@ -2,7 +2,7 @@ import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard, LifeBuoy, HeartPulse, Stethoscope,
-  Radio, Bell, BarChart3, Webhook, Settings, Menu, X,
+  Radio, Bell, BarChart3, Webhook, Settings, Menu, X, FlaskConical,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ const navItems = [
   { label: "Usage", to: "/admin/usage", icon: BarChart3 },
   { label: "Webhooks", to: "/admin/webhooks", icon: Webhook },
   { label: "Settings", to: "/admin/settings", icon: Settings },
+  { label: "Beta Testing", to: "/admin/beta-testing", icon: FlaskConical },
 ];
 
 export default function StreamLineShell() {
