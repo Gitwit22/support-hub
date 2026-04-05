@@ -85,6 +85,7 @@ const sampleSummary: AdminDashboardSummary = {
 describe("admin API (real fetch)", () => {
   beforeEach(() => {
     global.fetch = vi.fn();
+    document.cookie = "token=; Max-Age=0; path=/";
   });
 
   describe("getMonitoringOverview", () => {
@@ -135,6 +136,21 @@ describe("admin API (real fetch)", () => {
       expect(result).toEqual(sampleUsage);
       const { url } = lastFetchCall();
       expect(url).toBe("/api/admin/usage");
+    });
+
+    it("sends Bearer auth and X-Program-Id when provided", async () => {
+      document.cookie = "token=jwt-test-token; path=/";
+      mockFetchOnce(sampleUsage);
+
+      await getUsageMetrics("today", "streamline-prod");
+
+      const { url, opts } = lastFetchCall();
+      expect(url).toBe("/api/admin/usage?period=today");
+      expect(opts?.credentials).toBe("include");
+      expect(opts?.headers).toMatchObject({
+        Authorization: "Bearer jwt-test-token",
+        "X-Program-Id": "streamline-prod",
+      });
     });
   });
 

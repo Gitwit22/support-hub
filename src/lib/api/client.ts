@@ -3,6 +3,23 @@ const STREAMLINE_API_BASE_URL = import.meta.env.VITE_STREAMLINE_API_BASE_URL;
 const STREAMLINE_API_TOKEN = import.meta.env.VITE_STREAMLINE_API_TOKEN;
 const SUPPORT_DATA_SOURCE = import.meta.env.VITE_SUPPORT_DATA_SOURCE;
 
+function getAuthTokenFromCookie(cookieName = "token"): string | undefined {
+  if (typeof document === "undefined") return undefined;
+
+  const cookieEntry = document.cookie
+    .split(";")
+    .map((entry) => entry.trim())
+    .find((entry) => entry.startsWith(`${cookieName}=`));
+
+  if (!cookieEntry) return undefined;
+
+  const rawValue = cookieEntry.slice(cookieName.length + 1);
+  const decoded = decodeURIComponent(rawValue).trim();
+  if (!decoded) return undefined;
+
+  return decoded.startsWith("Bearer ") ? decoded.slice("Bearer ".length).trim() : decoded;
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -48,17 +65,20 @@ export interface ApiFetchOptions extends Omit<RequestInit, "headers"> {
   headers?: Record<string, string>;
   /** When provided, sent as X-Program-Id header so the backend can scope data. */
   programId?: string;
+  /** Optional explicit Bearer token. Falls back to the browser token cookie. */
+  authToken?: string;
 }
 
 export async function apiFetch<T>(
   path: string,
   options?: ApiFetchOptions,
 ): Promise<T> {
-  const { programId, ...fetchOpts } = options ?? {};
+  const { programId, authToken, ...fetchOpts } = options ?? {};
+  const resolvedAuthToken = authToken ?? getAuthTokenFromCookie();
   const url = `${API_BASE_URL}${path}`;
   return requestJson<T>(url, {
     ...fetchOpts,
-    headers: buildHeaders(fetchOpts, undefined, programId),
+    headers: buildHeaders(fetchOpts, resolvedAuthToken, programId),
     credentials: "include",
   });
 }
