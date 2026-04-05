@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
 import { getAdminDashboardSummary } from "@/lib/api/admin";
 import type { AdminDashboardSummary, ServiceStatus } from "@/lib/types/admin";
+import { useProgram } from "@/lib/programs/ProgramContext";
 import {
   TicketCheck, AlertTriangle, Radio, HeartPulse, Bell,
-  Users, CalendarDays,
+  Users, CalendarDays, LayoutDashboard,
 } from "lucide-react";
 
 const statusColor: Record<ServiceStatus, string> = {
@@ -21,12 +22,36 @@ const statusLabel: Record<ServiceStatus, string> = {
 };
 
 export default function AdminDashboardPage() {
+  const { activeProgram } = useProgram();
   const [data, setData] = useState<AdminDashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const supportsDashboard = Boolean(activeProgram.endpoints.dashboard);
+
   useEffect(() => {
+    if (!supportsDashboard) { setLoading(false); return; }
+    setLoading(true);
     getAdminDashboardSummary().then((d) => { setData(d); setLoading(false); });
-  }, []);
+  }, [activeProgram.id, supportsDashboard]);
+
+  if (!supportsDashboard) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+          <p className="text-sm text-muted-foreground mt-1">Operations overview for {activeProgram.name}.</p>
+        </div>
+        <div className="rounded-lg border border-dashed border-border p-8 text-center">
+          <LayoutDashboard className="mx-auto h-8 w-8 text-muted-foreground mb-3" />
+          <p className="text-sm font-medium text-foreground">Dashboard not configured</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {activeProgram.name} does not expose a dashboard summary endpoint. Add{" "}
+            <span className="font-medium">endpoints.dashboard</span> to the program config to enable this view.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading || !data) {
     return (
@@ -55,7 +80,7 @@ export default function AdminDashboardPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-1">Operations overview for Nxt Lvl Technology platform.</p>
+        <p className="text-sm text-muted-foreground mt-1">Operations overview for {activeProgram.name}.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

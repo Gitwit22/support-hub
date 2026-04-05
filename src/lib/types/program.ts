@@ -65,6 +65,17 @@ export interface ProgramEndpoints {
   resourceDetail?: string;
   /** Activity stream for a resource — use :id as placeholder. */
   resourceActivity?: string;
+  /**
+   * Ticket management REST endpoint (e.g. "/support/tickets").
+   * Absence means the program does not expose a conventional ticket API
+   * (e.g. StreamLine is room-based) and ticket pages will degrade gracefully.
+   */
+  tickets?: string;
+  /**
+   * Admin dashboard summary endpoint (e.g. "/api/admin/dashboard").
+   * Absence means no aggregate dashboard is exposed by this program.
+   */
+  dashboard?: string;
   /** Any additional custom paths beyond the standard categories. */
   [key: string]: string | undefined;
 }

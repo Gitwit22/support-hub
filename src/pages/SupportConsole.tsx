@@ -11,9 +11,11 @@ import {
   addTicketMessage, closeTicket, getCurrentUser,
 } from "@/lib/api/support";
 import type { CurrentUser, Ticket, TicketFilters } from "@/lib/types/support";
-import { AlertTriangle, LayoutDashboard, List, Plus, Users } from "lucide-react";
+import { AlertTriangle, LayoutDashboard, LifeBuoy, List, Plus, Users } from "lucide-react";
+import { useProgram } from "@/lib/programs/ProgramContext";
 
 export default function SupportConsolePage() {
+  const { activeProgram } = useProgram();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [masterTickets, setMasterTickets] = useState<Ticket[]>([]);
@@ -43,9 +45,11 @@ export default function SupportConsolePage() {
     setCurrentUser(user);
   }, []);
 
-  useEffect(() => { fetchTickets(); }, [fetchTickets]);
-  useEffect(() => { fetchMasterTickets(); }, [fetchMasterTickets]);
-  useEffect(() => { fetchLoggedInUser(); }, [fetchLoggedInUser]);
+  const supportsTickets = Boolean(activeProgram.endpoints.tickets);
+
+  useEffect(() => { if (supportsTickets) fetchTickets(); else setLoading(false); }, [fetchTickets, supportsTickets]);
+  useEffect(() => { if (supportsTickets) fetchMasterTickets(); else setMasterLoading(false); }, [fetchMasterTickets, supportsTickets]);
+  useEffect(() => { if (supportsTickets) fetchLoggedInUser(); }, [fetchLoggedInUser, supportsTickets]);
 
   const handleSelectTicket = async (ticket: Ticket) => {
     const full = await getTicket(ticket.id);
@@ -126,6 +130,30 @@ export default function SupportConsolePage() {
   const masterErrorRows = [...masterTickets].sort(
     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   );
+
+  if (!supportsTickets) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Support Console</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Manage support tickets across all Nxt Lvl Technology products.
+            </p>
+          </div>
+        </div>
+        <div className="rounded-lg border border-dashed border-border p-8 text-center">
+          <LifeBuoy className="mx-auto h-8 w-8 text-muted-foreground mb-3" />
+          <p className="text-sm font-medium text-foreground">Ticket API not configured</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {activeProgram.name} does not expose a ticket management endpoint.{" "}
+            Add <span className="font-medium">endpoints.tickets</span> to the program config to enable this view.
+            For StreamLine, use the <span className="font-medium">Rooms</span> page for live support sessions.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // Ticket detail view
   if (selectedTicket) {
