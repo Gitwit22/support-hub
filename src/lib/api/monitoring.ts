@@ -10,6 +10,20 @@ import type { ProgramEnvironment } from "@/lib/types/program";
 
 const MONITORING_BASE = "/api/v1";
 
+interface MonitoringTransport {
+  /** "" in the browser (same origin); the Support Hub URL when used from a script. */
+  origin: string;
+  /** Extra headers, e.g. Cloudflare Access service-token credentials for scripts. */
+  headers: Record<string, string>;
+}
+
+let transport: MonitoringTransport = { origin: "", headers: {} };
+
+/** Points this client at a Support Hub outside the browser (scripts, agents). */
+export function configureMonitoringClient(options: { origin?: string; headers?: Record<string, string> }): void {
+  transport = { origin: (options.origin ?? "").replace(/\/+$/, ""), headers: options.headers ?? {} };
+}
+
 export type MonitoringEnvironment = "production" | "staging" | "development";
 
 export class MonitoringApiError extends Error {
@@ -27,10 +41,10 @@ export class MonitoringApiError extends Error {
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`${MONITORING_BASE}${path}`, {
+    response = await fetch(`${transport.origin}${MONITORING_BASE}${path}`, {
       method,
       credentials: "include",
-      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      headers: { ...transport.headers, ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch (error) {
@@ -125,6 +139,11 @@ export interface OnboardingPlan {
   /** Worker secret (HC_*) sent as the bearer token on checks that require auth. */
   authSecretName?: string;
   keyLabel: string;
+  /**
+   * "always" (default) issues a new key on every run; "if-none-active" skips it
+   * when the environment already has an active key, so re-runs don't pile up keys.
+   */
+  keyPolicy?: "always" | "if-none-active";
 }
 
 export type OnboardingStep = "application" | "environment" | "healthChecks" | "telemetryKey";
@@ -138,7 +157,8 @@ export interface OnboardingProgress {
 export interface OnboardingResult {
   applicationId: string;
   environmentId: string;
-  telemetryKey: { id: string; token: string };
+  /** null when keyPolicy "if-none-active" found an active key and issued none. */
+  telemetryKey: { id: string; token: string } | null;
 }
 
 export class OnboardingError extends Error {
@@ -241,6 +261,16 @@ export async function onboardProgram(
   });
 
   const telemetryKey = await run("telemetryKey", async () => {
+    if (plan.keyPolicy === "if-none-active") {
+      const { keys } = await request<{ keys: Array<{ id: string; revokedAt: string | null }> }>(
+        "GET",
+        `/environments/${encodeURIComponent(environmentId)}/keys`,
+      );
+      const active = keys.filter((key) => !key.revokedAt);
+      if (active.length) {
+        return { value: null, detail: `Active key already exists (${active.map((key) => key.id).join(", ")}); none issued` };
+      }
+    }
     const { key, token } = await request<{ key: { id: string }; token: string }>(
       "POST",
       `/environments/${encodeURIComponent(environmentId)}/keys`,
@@ -251,3 +281,39 @@ export async function onboardProgram(
 
   return { applicationId: plan.applicationId, environmentId, telemetryKey };
 }
+
+// ---------------------------------------------------------------------------
+// Connection verification
+// ---------------------------------------------------------------------------
+
+export interface ConnectionReport {
+  environmentId: string;
+  applicationId: string;
+  applicationName: string;
+  environment: MonitoringEnvironment;
+  checkedAt: string;
+  ranChecks: boolean;
+  verdict: "connected" | "partial" | "not_connected";
+  steps: Array<{ id: "health" | "telemetry"; ok: boolean; detail: string }>;
+  healthChecks: Array<{
+    id: string;
+    name: string;
+    url: string;
+    status: "up" | "degraded" | "down" | "not_run";
+    httpStatus: number | null;
+    latencyMs: number | null;
+    errorMessage: string | null;
+    checkedAt: string | null;
+  }>;
+  telemetry: { activeKeys: number; lastKeyUsedAt: string | null; lastEventAt: string | null };
+}
+
+/**
+ * runChecks: true polls every health check now (results are recorded like
+ * scheduled polling); false reads the latest results and telemetry only.
+ */
+export async function verifyConnection(environmentId: string, options: { runChecks: boolean }): Promise<ConnectionReport> {
+  const path = `/environments/${encodeURIComponent(environmentId)}/${options.runChecks ? "verify" : "connection"}`;
+  return request<ConnectionReport>(options.runChecks ? "POST" : "GET", path);
+}
+

@@ -1,5 +1,5 @@
 ﻿import { useState } from "react";
-import { Link, Settings2, Trash2 } from "lucide-react";
+import { Activity, Link, Settings2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -15,6 +15,8 @@ import {
 import { useProgram } from "@/lib/programs/ProgramContext";
 import type { ProgramConfig } from "@/lib/types/program";
 import { isBuiltInProgram } from "@/lib/programs/registry";
+import { ConnectionVerifier } from "@/components/programs/ConnectionVerifier";
+import { ProgramIntakeWizard } from "@/components/programs/ProgramIntakeWizard";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -25,6 +27,56 @@ function InfoRow({ label, value }: { label: string; value: string }) {
     <div>
       <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
       <p className="mt-1 break-all text-sm text-card-foreground">{value || "-"}</p>
+    </div>
+  );
+}
+
+/**
+ * Monitoring link status. A program added before onboarding did real signup
+ * exists only in this browser's program list; "Finish linking" registers it.
+ */
+function MonitoringCard({ program, isBuiltIn }: { program: ProgramConfig; isBuiltIn: boolean }) {
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [linkSource, setLinkSource] = useState<ProgramConfig | null>(null);
+  const environmentId = program.monitoring?.environmentId;
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-5 space-y-4">
+      <div className="flex items-center gap-2">
+        <Activity className="h-5 w-5 text-muted-foreground" />
+        <div>
+          <h2 className="text-lg font-semibold text-card-foreground">Monitoring</h2>
+          <p className="text-sm text-muted-foreground">Support Hub health checks and telemetry for this program.</p>
+        </div>
+      </div>
+
+      {environmentId ? (
+        <ConnectionVerifier environmentId={environmentId} />
+      ) : isBuiltIn ? (
+        <p className="text-sm text-muted-foreground">Built-in program: not registered with Support Hub monitoring.</p>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">Not linked.</span> This program is in your program list but
+            was never registered with monitoring, so nothing is being checked and it has no telemetry key.
+          </p>
+          <Button
+            onClick={() => {
+              setLinkSource(program);
+              setWizardOpen(true);
+            }}
+            className="gap-2"
+          >
+            <Link className="h-4 w-4" />
+            Finish linking
+          </Button>
+        </div>
+      )}
+
+      {/* Mounted outside the branches above: a successful save links the program, which flips this card to
+          its linked view, and the wizard must survive that to show the one-time telemetry key. The prefill
+          snapshot is taken when the wizard opens so the switch to the linked entry doesn't reset it. */}
+      <ProgramIntakeWizard open={wizardOpen} onClose={() => setWizardOpen(false)} initialProgram={linkSource ?? undefined} />
     </div>
   );
 }
@@ -81,6 +133,8 @@ function ProgramSettingsView({ program }: { program: ProgramConfig }) {
           <InfoRow label="Resource Type" value={program.resourceLabel ?? "-"} />
         </div>
       </div>
+
+      <MonitoringCard program={program} isBuiltIn={isBuiltIn} />
 
       {/* Enabled modules */}
       {enabledCaps.length > 0 && (

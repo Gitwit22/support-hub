@@ -10,6 +10,7 @@
 
 import { requireAccessIdentity, type Identity } from "./auth/access";
 import { authenticateTelemetryRequest } from "./auth/telemetryKeys";
+import { connectionReport } from "./api/connection";
 import * as read from "./api/read";
 import * as registry from "./api/registry";
 import type { Env } from "./env";
@@ -85,6 +86,16 @@ const dashboardRouteDefs: Array<[string, string, DashboardRoute["handler"]]> = [
     ({ env, params, identity }) => read.resolveIncident(env.DB, params.incidentId, identity),
   ],
   ["GET", "/api/v1/event-log", ({ env, url }) => read.listEvents(env.DB, url)],
+  [
+    "GET",
+    "/api/v1/environments/:environmentId/connection",
+    ({ env, params }) => connectionReport(env, params.environmentId, false),
+  ],
+  [
+    "POST",
+    "/api/v1/environments/:environmentId/verify",
+    ({ env, params }) => connectionReport(env, params.environmentId, true),
+  ],
   ["POST", "/api/v1/probe", async ({ env, request }) => registry.probeEndpoint(env, await readJsonBody(request))],
 ];
 

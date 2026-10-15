@@ -104,6 +104,21 @@ describe("onboardProgram", () => {
     expect(calls.filter((c) => c.path.endsWith("/keys"))).toHaveLength(1);
   });
 
+  it("with keyPolicy if-none-active, skips the key when one is active and issues one when none is", async () => {
+    const calls = fakeApi({
+      "GET /api/v1/environments/env-1/keys": () => ({ status: 200, body: { keys: [{ id: "old1", revokedAt: null }] } }),
+    });
+    const kept = await onboardProgram({ ...plan, keyPolicy: "if-none-active" });
+    expect(kept.telemetryKey).toBeNull();
+    expect(calls.some((c) => c.method === "POST" && c.path.endsWith("/keys"))).toBe(false);
+
+    fakeApi({
+      "GET /api/v1/environments/env-1/keys": () => ({ status: 200, body: { keys: [{ id: "old1", revokedAt: "2026-10-01T00:00:00.000Z" }] } }),
+    });
+    const issued = await onboardProgram({ ...plan, keyPolicy: "if-none-active" });
+    expect(issued.telemetryKey?.id).toBe("abc123abc123");
+  });
+
   it("stops at the failing step, issues no key, and reports which step failed", async () => {
     const calls = fakeApi({
       "POST /api/v1/environments/env-1/health-checks": () => ({

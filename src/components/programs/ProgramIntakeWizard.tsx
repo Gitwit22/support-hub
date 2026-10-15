@@ -5,7 +5,7 @@
 // program list, so a program in the switcher is always really monitored.
 // ---------------------------------------------------------------------------
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -50,6 +50,7 @@ import {
   type PlannedHealthCheck,
 } from "@/lib/api/monitoring";
 import { cn } from "@/lib/utils";
+import { ConnectionVerifier } from "./ConnectionVerifier";
 
 // ---------------------------------------------------------------------------
 // Wizard state shape
@@ -810,10 +811,35 @@ function StepSave({ state }: { state: WizardState }) {
 interface ProgramIntakeWizardProps {
   open: boolean;
   onClose: () => void;
+  /**
+   * An existing program-list entry that was never registered with monitoring
+   * (e.g. added before onboarding did real signup). The wizard starts from its
+   * values and replaces the entry once registration succeeds.
+   */
+  initialProgram?: ProgramConfig;
 }
 
-export function ProgramIntakeWizard({ open, onClose }: ProgramIntakeWizardProps) {
-  const { addProgram } = useProgram();
+/** Wizard values for linking an existing program-list entry. */
+function stateFromProgram(program: ProgramConfig): WizardState {
+  return {
+    ...INITIAL_STATE,
+    name: program.name,
+    slug: program.slug,
+    systemName: program.systemName ?? "",
+    resourceLabel: program.resourceLabel ?? "",
+    environment: program.environment,
+    description: program.description ?? "",
+    usageItems: program.usageItems ?? [],
+    apiBaseUrl: program.apiBaseUrl,
+    healthEndpoint: program.healthEndpoint || "/health",
+    authMethod: program.auth.method,
+    capabilities: { ...DEFAULT_CAPABILITIES, ...program.capabilities },
+    endpoints: { ...program.endpoints },
+  };
+}
+
+export function ProgramIntakeWizard({ open, onClose, initialProgram }: ProgramIntakeWizardProps) {
+  const { addProgram, removeProgram } = useProgram();
   const [step, setStep] = useState(0);
   const [wizardState, setWizardState] = useState<WizardState>(INITIAL_STATE);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("idle");
@@ -824,6 +850,10 @@ export function ProgramIntakeWizard({ open, onClose }: ProgramIntakeWizardProps)
   const [saveError, setSaveError] = useState<string | null>(null);
   const [result, setResult] = useState<OnboardingResult | null>(null);
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (open && initialProgram) setWizardState(stateFromProgram(initialProgram));
+  }, [open, initialProgram]);
 
   const updateState = useCallback((patch: Partial<WizardState>) => {
     setWizardState((prev) => ({ ...prev, ...patch }));
@@ -934,10 +964,12 @@ export function ProgramIntakeWizard({ open, onClose }: ProgramIntakeWizardProps)
       monitoring: {
         applicationId: onboarding.applicationId,
         environmentId: onboarding.environmentId,
-        telemetryKeyId: onboarding.telemetryKey.id,
+        telemetryKeyId: onboarding.telemetryKey?.id ?? "",
       },
     };
     addProgram(config, true);
+    // Linking an existing entry under a new slug/environment: don't leave the unlinked copy behind.
+    if (initialProgram && initialProgram.id !== id) removeProgram(initialProgram.id);
     setResult(onboarding);
     setSaving(false);
     setSaved(true);
@@ -946,7 +978,7 @@ export function ProgramIntakeWizard({ open, onClose }: ProgramIntakeWizardProps)
   const envSnippet = result
     ? [
         `SUPPORT_HUB_URL=${window.location.origin}`,
-        `SUPPORT_HUB_TELEMETRY_KEY=${result.telemetryKey.token}`,
+        `SUPPORT_HUB_TELEMETRY_KEY=${result.telemetryKey?.token ?? "(existing key)"}`,
         `SUPPORT_HUB_ENVIRONMENT=${toMonitoringEnvironment(wizardState.environment)}`,
       ].join("\n")
     : "";
@@ -966,7 +998,7 @@ export function ProgramIntakeWizard({ open, onClose }: ProgramIntakeWizardProps)
     <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose(); }}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>{saved ? "Program Registered!" : "Add Program"}</DialogTitle>
+          <DialogTitle>{saved ? "Program Registered!" : initialProgram ? `Finish Linking ${initialProgram.name}` : "Add Program"}</DialogTitle>
         </DialogHeader>
 
         {/* Progress bar */}
@@ -1021,6 +1053,14 @@ export function ProgramIntakeWizard({ open, onClose }: ProgramIntakeWizardProps)
                   with a configuration error.
                 </p>
               )}
+
+              <div className="rounded-md border border-border p-3">
+                <ConnectionVerifier environmentId={result.environmentId} runOnMount />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Telemetry turns green once the app is redeployed with the values above. You can close this and check
+                  again later under Settings.
+                </p>
+              </div>
 
               <div className="flex justify-end">
                 <Button onClick={handleClose}>Done</Button>

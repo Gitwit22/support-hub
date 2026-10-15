@@ -17,7 +17,9 @@
     "dev:worker": "vite build && wrangler dev",
     "db:migrate:local": "wrangler d1 migrations apply support-hub --local",
     "db:migrate:remote": "wrangler d1 migrations apply support-hub --remote",
-    "deploy": "vite build && wrangler deploy"
+    "deploy": "vite build && wrangler deploy",
+    "link-program": "vite-node scripts/link-program.ts --",
+    "typecheck:scripts": "tsc -p scripts/tsconfig.json --noEmit"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

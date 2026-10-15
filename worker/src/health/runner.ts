@@ -133,20 +133,31 @@ export async function runDueHealthChecks(env: Env, now = Date.now()): Promise<{ 
     console.warn(JSON.stringify({ msg: "health_checks_deferred", due: due.length, ran: batch.length }));
   }
 
-  const outcomes = await Promise.all(batch.map(async (check) => ({ check, result: await runHealthCheck(check, env) })));
-  if (outcomes.length) {
-    const checkedAt = nowIso();
-    await env.DB.batch(
-      outcomes.flatMap(({ check, result }) => [
-        env.DB.prepare(
-          `INSERT INTO health_results (id, health_check_id, status, http_status, latency_ms, error_type, error_message, checked_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        ).bind(newId(), check.id, result.status, result.httpStatus, result.latencyMs, result.errorType, result.errorMessage, checkedAt),
-        env.DB.prepare(`UPDATE health_checks SET last_run_at = ? WHERE id = ?`).bind(checkedAt, check.id),
-      ]),
-    );
-  }
+  const outcomes = await runAndRecord(env, batch);
   return { ran: outcomes.length, skipped: due.length - batch.length };
+}
+
+export interface CheckOutcome {
+  check: HealthCheckRow;
+  result: HealthResult;
+  checkedAt: string;
+}
+
+/** Runs checks now and records each result exactly as scheduled polling does. */
+export async function runAndRecord(env: Env, checks: HealthCheckRow[]): Promise<CheckOutcome[]> {
+  const outcomes = await Promise.all(checks.map(async (check) => ({ check, result: await runHealthCheck(check, env) })));
+  if (!outcomes.length) return [];
+  const checkedAt = nowIso();
+  await env.DB.batch(
+    outcomes.flatMap(({ check, result }) => [
+      env.DB.prepare(
+        `INSERT INTO health_results (id, health_check_id, status, http_status, latency_ms, error_type, error_message, checked_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(newId(), check.id, result.status, result.httpStatus, result.latencyMs, result.errorType, result.errorMessage, checkedAt),
+      env.DB.prepare(`UPDATE health_checks SET last_run_at = ? WHERE id = ?`).bind(checkedAt, check.id),
+    ]),
+  );
+  return outcomes.map((outcome) => ({ ...outcome, checkedAt }));
 }
 
 export async function pruneHealthResults(db: D1Database, now = Date.now()): Promise<number> {

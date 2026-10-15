@@ -105,6 +105,8 @@ unavailable.
 | POST | `/api/v1/incidents/:id/resolve` |
 | GET | `/api/v1/event-log?applicationId=&environment=&type=&before=&limit=` |
 | POST | `/api/v1/probe` `{url, expectedStatus?, authSecretName?}`: one-off server-side check, nothing stored |
+| GET | `/api/v1/environments/:envId/connection`: connection report from the latest results (runs nothing) |
+| POST | `/api/v1/environments/:envId/verify`: runs every health check now (recorded like polling), then reports |
 
 Public: `GET /api/v1/health`, Support Hub's own liveness check (including the database).
 
@@ -129,6 +131,37 @@ For ClientFlow: slug `clientflow`, base URL `https://clientflow-vjqd.onrender.co
 checks `live` `/api/v1/health/live`, `ready` `/api/v1/health/ready` and
 `dependencies` `/api/v1/health/dependencies` (requires token,
 `HC_CLIENTFLOW_PROD`, whose value is ClientFlow's `HEALTH_DEPENDENCIES_TOKEN`).
+
+## Verifying a link
+
+An environment is **connected** when both of these hold:
+
+- **health:** every enabled check answers (up or degraded);
+- **telemetry:** the app has delivered at least one event with a key that is
+  still active. ClientFlow sends an `info` `TELEMETRY_CONNECTED` event on
+  startup for exactly this; it opens no incident.
+
+Health alone gives **partial**; neither gives **not connected**. The wizard's
+last screen and each program's **Settings → Monitoring** card show this live,
+and keep watching for the first event. Programs added before onboarding did
+real signup show **Finish linking** there.
+
+### From the command line (scripts, agents)
+
+Each application ships a `support-hub.json` manifest (ClientFlow's is at the
+root of its repo). Link and verify it with:
+
+```sh
+SUPPORT_HUB_URL=https://<support-hub-domain> \
+CF_ACCESS_CLIENT_ID=<service token id> CF_ACCESS_CLIENT_SECRET=<service token secret> \
+npm run link-program -- ../clientflow-hub/support-hub.json --environment production --wait 600
+```
+
+It's safe to re-run: existing records are reused, and a key is issued only if
+the environment has no active one (`--new-key` forces one). It exits 0 when
+connected, 2 when partial, and 1 otherwise. The service token comes from Zero
+Trust → Access → Service Auth, and the dashboard Access application needs a
+**Service Auth** policy that allows it.
 
 ## Deploying
 
