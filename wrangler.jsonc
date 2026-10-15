@@ -1,0 +1,37 @@
+// Support Hub: monitoring API + dashboard UI on one Worker.
+// Deployment steps are in worker/README.md.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "support-hub",
+  "main": "worker/src/index.ts",
+  "compatibility_date": "2026-10-01",
+  // The dashboard is protected by Cloudflare Access on the custom domain. A
+  // workers.dev URL would sit outside that Access application, so keep it off.
+  "workers_dev": false,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "support-hub",
+      // Replace with the id printed by `npx wrangler d1 create support-hub`.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "worker/migrations"
+    }
+  ],
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
+  "observability": {
+    "enabled": true
+  }
+  // Secrets (npx wrangler secret put <NAME>):
+  //   ACCESS_TEAM_DOMAIN  e.g. https://<team>.cloudflareaccess.com
+  //   ACCESS_AUD          Access application AUD tag
+  //   HC_*                bearer tokens for authenticated health checks
+}

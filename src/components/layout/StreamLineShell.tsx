@@ -7,6 +7,7 @@ import {
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ProgramSwitcher } from "@/components/programs/ProgramSwitcher";
+import { DataUnavailableBanner } from "@/components/layout/DataUnavailableBanner";
 import { useProgram } from "@/lib/programs/ProgramContext";
 import type { ProgramCapabilities } from "@/lib/types/program";
 
@@ -114,6 +115,7 @@ export default function StreamLineShell() {
       {/* Main */}
       <main className="flex-1 overflow-auto">
         <div className="p-6 lg:p-8">
+          <DataUnavailableBanner />
           <Outlet />
         </div>
       </main>
