@@ -14,6 +14,22 @@ import type {
   ServiceStatus,
 } from "@/lib/types/admin";
 import { apiFetch } from "./client";
+import { markEndpointAvailable, markEndpointUnavailable } from "./dataAvailability";
+
+/**
+ * Reads keep their empty fallbacks so pages still render, but every fallback
+ * is recorded so the shell can flag that the data on screen is not live.
+ */
+async function readOrFallback<T>(endpoint: string, read: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    const data = await read();
+    markEndpointAvailable(endpoint);
+    return data;
+  } catch (error) {
+    markEndpointUnavailable(endpoint, error);
+    return fallback;
+  }
+}
 
 const now = () => new Date().toISOString();
 
@@ -61,11 +77,11 @@ const EMPTY_WEBHOOK_DELIVERY_LOG: WebhookDeliveryLog = {
 // ---------------------------------------------------------------------------
 
 export async function getMonitoringOverview(programId?: string): Promise<MonitoringOverview> {
-  try {
-    return await apiFetch<MonitoringOverview>("/admin/monitoring", { programId });
-  } catch {
-    return EMPTY_MONITORING_OVERVIEW;
-  }
+  return readOrFallback(
+    "/admin/monitoring",
+    () => apiFetch<MonitoringOverview>("/admin/monitoring", { programId }),
+    EMPTY_MONITORING_OVERVIEW,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -73,11 +89,11 @@ export async function getMonitoringOverview(programId?: string): Promise<Monitor
 // ---------------------------------------------------------------------------
 
 export async function listDiagnostics(programId?: string): Promise<DiagnosticEntry[]> {
-  try {
-    return await apiFetch<DiagnosticEntry[]>("/admin/diagnostics", { programId });
-  } catch {
-    return [];
-  }
+  return readOrFallback(
+    "/admin/diagnostics",
+    () => apiFetch<DiagnosticEntry[]>("/admin/diagnostics", { programId }),
+    [],
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -85,11 +101,11 @@ export async function listDiagnostics(programId?: string): Promise<DiagnosticEnt
 // ---------------------------------------------------------------------------
 
 export async function listRooms(programId?: string): Promise<Room[]> {
-  try {
-    return await apiFetch<Room[]>("/admin/rooms", { programId });
-  } catch {
-    return [];
-  }
+  return readOrFallback(
+    "/admin/rooms",
+    () => apiFetch<Room[]>("/admin/rooms", { programId }),
+    [],
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -97,11 +113,11 @@ export async function listRooms(programId?: string): Promise<Room[]> {
 // ---------------------------------------------------------------------------
 
 export async function listAlerts(programId?: string): Promise<Alert[]> {
-  try {
-    return await apiFetch<Alert[]>("/admin/alerts", { programId });
-  } catch {
-    return [];
-  }
+  return readOrFallback(
+    "/admin/alerts",
+    () => apiFetch<Alert[]>("/admin/alerts", { programId }),
+    [],
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -109,14 +125,14 @@ export async function listAlerts(programId?: string): Promise<Alert[]> {
 // ---------------------------------------------------------------------------
 
 export async function getUsageMetrics(period?: string, programId?: string): Promise<UsageMetrics> {
-  try {
-    const query = new URLSearchParams();
-    if (period && period !== "all") query.set("period", encodeURIComponent(period));
-    const qs = query.toString();
-    return await apiFetch<UsageMetrics>(`/admin/usage${qs ? `?${qs}` : ""}`, { programId });
-  } catch {
-    return EMPTY_USAGE_METRICS;
-  }
+  const query = new URLSearchParams();
+  if (period && period !== "all") query.set("period", encodeURIComponent(period));
+  const qs = query.toString();
+  return readOrFallback(
+    "/admin/usage",
+    () => apiFetch<UsageMetrics>(`/admin/usage${qs ? `?${qs}` : ""}`, { programId }),
+    EMPTY_USAGE_METRICS,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -124,11 +140,11 @@ export async function getUsageMetrics(period?: string, programId?: string): Prom
 // ---------------------------------------------------------------------------
 
 export async function listWebhooks(programId?: string): Promise<Webhook[]> {
-  try {
-    return await apiFetch<Webhook[]>("/admin/webhooks", { programId });
-  } catch {
-    return [];
-  }
+  return readOrFallback(
+    "/admin/webhooks",
+    () => apiFetch<Webhook[]>("/admin/webhooks", { programId }),
+    [],
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -136,11 +152,11 @@ export async function listWebhooks(programId?: string): Promise<Webhook[]> {
 // ---------------------------------------------------------------------------
 
 export async function getAdminDashboardSummary(programId?: string): Promise<AdminDashboardSummary> {
-  try {
-    return await apiFetch<AdminDashboardSummary>("/admin/dashboard", { programId });
-  } catch {
-    return EMPTY_ADMIN_DASHBOARD_SUMMARY;
-  }
+  return readOrFallback(
+    "/admin/dashboard",
+    () => apiFetch<AdminDashboardSummary>("/admin/dashboard", { programId }),
+    EMPTY_ADMIN_DASHBOARD_SUMMARY,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -149,20 +165,20 @@ export async function getAdminDashboardSummary(programId?: string): Promise<Admi
 
 /** GET /api/admin/monitoring/overview — health summary (webhooks, active rooms, pending support) */
 export async function getMonitoringHealthSummary(programId?: string): Promise<MonitoringHealthSummary> {
-  try {
-    return await apiFetch<MonitoringHealthSummary>("/admin/monitoring/overview", { programId });
-  } catch {
-    return EMPTY_MONITORING_HEALTH_SUMMARY;
-  }
+  return readOrFallback(
+    "/admin/monitoring/overview",
+    () => apiFetch<MonitoringHealthSummary>("/admin/monitoring/overview", { programId }),
+    EMPTY_MONITORING_HEALTH_SUMMARY,
+  );
 }
 
 /** GET /api/admin/monitoring/services — service status (API, Firestore, LiveKit, hooks, etc.) */
 export async function getMonitoringServiceStatus(programId?: string): Promise<MonitoringServiceStatus> {
-  try {
-    return await apiFetch<MonitoringServiceStatus>("/admin/monitoring/services", { programId });
-  } catch {
-    return EMPTY_MONITORING_SERVICE_STATUS;
-  }
+  return readOrFallback(
+    "/admin/monitoring/services",
+    () => apiFetch<MonitoringServiceStatus>("/admin/monitoring/services", { programId }),
+    EMPTY_MONITORING_SERVICE_STATUS,
+  );
 }
 
 /** GET /api/admin/monitoring/webhooks — webhook delivery log (paginated, filterable) */
@@ -173,45 +189,45 @@ export async function getWebhookDeliveryLog(params?: {
   event?: string;
   programId?: string;
 }): Promise<WebhookDeliveryLog> {
-  try {
-    const query = new URLSearchParams();
-    if (params?.page) query.set("page", String(params.page));
-    if (params?.pageSize) query.set("pageSize", String(params.pageSize));
-    if (params?.status) query.set("status", params.status);
-    if (params?.event) query.set("event", params.event);
-    const qs = query.toString();
-    return await apiFetch<WebhookDeliveryLog>(
-      `/admin/monitoring/webhooks${qs ? `?${qs}` : ""}`,
-      { programId: params?.programId },
-    );
-  } catch {
-    return EMPTY_WEBHOOK_DELIVERY_LOG;
-  }
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.pageSize) query.set("pageSize", String(params.pageSize));
+  if (params?.status) query.set("status", params.status);
+  if (params?.event) query.set("event", params.event);
+  const qs = query.toString();
+  return readOrFallback(
+    "/admin/monitoring/webhooks",
+    () =>
+      apiFetch<WebhookDeliveryLog>(`/admin/monitoring/webhooks${qs ? `?${qs}` : ""}`, {
+        programId: params?.programId,
+      }),
+    EMPTY_WEBHOOK_DELIVERY_LOG,
+  );
 }
 
 /** GET /api/admin/alerts — recent alerts */
 export async function getRecentAlerts(programId?: string): Promise<Alert[]> {
-  try {
-    return await apiFetch<Alert[]>("/admin/alerts", { programId });
-  } catch {
-    return [];
-  }
+  return readOrFallback(
+    "/admin/alerts",
+    () => apiFetch<Alert[]>("/admin/alerts", { programId }),
+    [],
+  );
 }
 
 /** GET /api/admin/rooms/active — live rooms */
 export async function getActiveRooms(programId?: string): Promise<ActiveRoom[]> {
-  try {
-    return await apiFetch<ActiveRoom[]>("/admin/rooms/active", { programId });
-  } catch {
-    return [];
-  }
+  return readOrFallback(
+    "/admin/rooms/active",
+    () => apiFetch<ActiveRoom[]>("/admin/rooms/active", { programId }),
+    [],
+  );
 }
 
 /** GET /api/admin/support/tickets — support tickets */
 export async function getAdminSupportTickets(programId?: string): Promise<AdminSupportTicket[]> {
-  try {
-    return await apiFetch<AdminSupportTicket[]>("/admin/support/tickets", { programId });
-  } catch {
-    return [];
-  }
+  return readOrFallback(
+    "/admin/support/tickets",
+    () => apiFetch<AdminSupportTicket[]>("/admin/support/tickets", { programId }),
+    [],
+  );
 }
