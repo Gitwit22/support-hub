@@ -4,7 +4,8 @@
 import { z } from "zod";
 import type { Identity } from "../auth/access";
 import { generateTelemetryToken, hashToken } from "../auth/telemetryKeys";
-import { isSecretNameAllowed } from "../health/runner";
+import { isSecretNameAllowed, runHealthCheck } from "../health/runner";
+import type { Env } from "../env";
 import { HttpError, json, newId, nowIso } from "../http";
 import { APPLICATION_ID_PATTERN, ENVIRONMENTS } from "../ingest/contract";
 
@@ -275,4 +276,39 @@ export async function updateHealthCheck(db: D1Database, healthCheckId: string, b
   }
   const row = await db.prepare(`SELECT * FROM health_checks WHERE id = ?`).bind(healthCheckId).first<Record<string, unknown>>();
   return json({ healthCheck: serializeHealthCheck(row!) });
+}
+
+// ---------------------------------------------------------------------------
+// Probe — one-off check used by the onboarding wizard's "Test connection".
+// Runs server-side exactly as polling will (same https rule, secret handling
+// and status rules), so a browser CORS failure can't masquerade as an outage
+// and a 404 can't pass as "connected". Nothing is stored.
+// ---------------------------------------------------------------------------
+
+const probeSchema = z
+  .object({
+    url: httpsUrl,
+    expectedStatus: healthCheckFields.expectedStatus.default(200),
+    authSecretName: secretName.optional(),
+  })
+  .strict();
+
+export async function probeEndpoint(env: Env, body: unknown): Promise<Response> {
+  const input = parseBody(probeSchema, body);
+  const result = await runHealthCheck(
+    {
+      id: "probe",
+      environment_id: "probe",
+      name: "probe",
+      url: input.url,
+      expected_status: input.expectedStatus,
+      timeout_ms: 10000,
+      interval_seconds: 60,
+      degraded_latency_ms: null,
+      auth_secret_name: input.authSecretName ?? null,
+      last_run_at: null,
+    },
+    env,
+  );
+  return json({ result });
 }

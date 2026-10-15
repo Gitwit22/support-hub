@@ -33,6 +33,14 @@ export interface HealthResult {
   errorMessage: string | null;
 }
 
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return "host";
+  }
+}
+
 export function isSecretNameAllowed(name: string): boolean {
   return SECRET_NAME_PATTERN.test(name);
 }
@@ -77,6 +85,15 @@ export async function runHealthCheck(check: HealthCheckRow, env: Env): Promise<H
         errorMessage: `Expected HTTP ${check.expected_status}, got ${response.status}`,
       };
     }
+    // Endpoints can report their own verdict (e.g. ClientFlow's /health/dependencies answers
+    // 200 with X-Health-Status: degraded when a pipeline is impaired but requests still work).
+    const reported = response.headers.get("x-health-status")?.trim().toLowerCase();
+    if (reported === "down") {
+      return { status: "down", httpStatus: response.status, latencyMs, errorType: null, errorMessage: "Endpoint reports down" };
+    }
+    if (reported === "degraded") {
+      return { status: "degraded", httpStatus: response.status, latencyMs, errorType: null, errorMessage: "Endpoint reports degraded" };
+    }
     const slow = check.degraded_latency_ms !== null && latencyMs > check.degraded_latency_ms;
     return {
       status: slow ? "degraded" : "up",
@@ -94,7 +111,7 @@ export async function runHealthCheck(check: HealthCheckRow, env: Env): Promise<H
       errorType: timedOut ? "timeout" : "network",
       errorMessage: timedOut
         ? `No response within ${check.timeout_ms}ms`
-        : `Request failed: ${(error as Error).message ?? "network error"}`.slice(0, 300),
+        : `Could not connect to ${hostOf(check.url)}: ${(error as Error).message ?? "network error"}`.slice(0, 300),
     };
   } finally {
     clearTimeout(timer);

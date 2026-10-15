@@ -104,8 +104,31 @@ unavailable.
 | GET | `/api/v1/incidents/:id`: incident plus recent events |
 | POST | `/api/v1/incidents/:id/resolve` |
 | GET | `/api/v1/event-log?applicationId=&environment=&type=&before=&limit=` |
+| POST | `/api/v1/probe` `{url, expectedStatus?, authSecretName?}`: one-off server-side check, nothing stored |
 
 Public: `GET /api/v1/health`, Support Hub's own liveness check (including the database).
+
+## Onboarding an application
+
+Use **Add Program** in the Support Hub UI (the program switcher's `+`). The
+wizard collects the program's info, API base URL (https), the health checks to
+poll, and which of them need a bearer token (an `HC_*` Worker secret). Then it:
+
+1. registers the application (its slug becomes the telemetry `application.id`),
+2. registers the environment (`dev` in the UI maps to `development`),
+3. adds the health checks,
+4. issues a telemetry key, shown **once** with the env snippet to paste into
+   the application's server environment.
+
+A failure stops at that step and nothing is added to the program list. Retry
+reuses whatever was already created, so re-running is safe. **Test Connection**
+runs through `POST /api/v1/probe`, so it checks reachability from Support Hub
+the same way polling will, not from the browser.
+
+For ClientFlow: slug `clientflow`, base URL `https://clientflow-vjqd.onrender.com`,
+checks `live` `/api/v1/health/live`, `ready` `/api/v1/health/ready` and
+`dependencies` `/api/v1/health/dependencies` (requires token,
+`HC_CLIENTFLOW_PROD`, whose value is ClientFlow's `HEALTH_DEPENDENCIES_TOKEN`).
 
 ## Deploying
 
@@ -124,6 +147,11 @@ Public: `GET /api/v1/health`, Support Hub's own liveness check (including the da
    application). Without both, dashboard APIs return `503 AUTH_NOT_CONFIGURED`.
    The Worker verifies the Access JWT itself, in addition to Access at the edge.
 6. `npm run deploy`
+
+A check is `up` when the response status matches `expectedStatus`. An endpoint
+can report its own verdict with an `X-Health-Status: degraded` (or `down`)
+response header; ClientFlow's `/api/v1/health/dependencies` does this when a
+pipeline such as email is impaired.
 
 Authenticated health checks take their bearer token from a Worker secret named
 `HC_*` (e.g. `npx wrangler secret put HC_CLIENTFLOW_PROD`). Reference that
