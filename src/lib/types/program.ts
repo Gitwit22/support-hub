@@ -119,4 +119,16 @@ export interface ProgramConfig {
   description?: string;
   /** ISO string — when the program was added to the registry. */
   registeredAt: string;
+  /**
+   * Set when the program was registered with the monitoring backend through
+   * the onboarding wizard. Absent for built-in seeds and older local entries.
+   */
+  monitoring?: ProgramMonitoringLink;
+}
+
+/** Ids of this program's records in the Support Hub monitoring backend. */
+export interface ProgramMonitoringLink {
+  applicationId: string;
+  environmentId: string;
+  telemetryKeyId: string;
 }

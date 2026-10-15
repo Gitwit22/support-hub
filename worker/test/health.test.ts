@@ -70,7 +70,11 @@ describe("single health check execution", () => {
     stubFetch(async () => {
       throw new TypeError("fetch failed");
     });
-    expect(await runHealthCheck(check(), ctx.env)).toMatchObject({ status: "down", errorType: "network" });
+    expect(await runHealthCheck(check(), ctx.env)).toMatchObject({
+      status: "down",
+      errorType: "network",
+      errorMessage: "Could not connect to clientflow.example.com: fetch failed",
+    });
   });
 
   it("honours an endpoint's own X-Health-Status verdict", async () => {
@@ -205,5 +209,31 @@ describe("scheduled polling end to end", () => {
       .bind(id)
       .run();
     expect(await pruneHealthResults(ctx.db, Date.parse("2026-10-15T00:00:00.000Z"))).toBe(1);
+  });
+});
+
+describe("POST /api/v1/probe", () => {
+  it("runs a one-off check server-side without storing anything", async () => {
+    const mock = stubFetch(async () => new Response("ok"));
+    const ok = await call(ctx.env, "POST", "/api/v1/probe", {
+      url: "https://clientflow.example.com/api/v1/health/dependencies",
+      authSecretName: "HC_CLIENTFLOW_PROD",
+    });
+    expect(ok.status).toBe(200);
+    expect(((await ok.json()) as { result: { status: string } }).result.status).toBe("up");
+    expect((mock.mock.calls[0][1]?.headers as Record<string, string>).Authorization).toBe("Bearer hc-secret");
+    expect((await ctx.db.prepare("SELECT COUNT(*) AS n FROM health_results").first<{ n: number }>())!.n).toBe(0);
+
+    stubFetch(async () => new Response("missing", { status: 404 }));
+    const notFound = (await (await call(ctx.env, "POST", "/api/v1/probe", { url: "https://clientflow.example.com/nope" })).json()) as {
+      result: { status: string; httpStatus: number };
+    };
+    expect(notFound.result).toMatchObject({ status: "down", httpStatus: 404 });
+  });
+
+  it("applies the same validation as health checks", async () => {
+    for (const body of [{ url: "http://insecure.example.com" }, { url: "https://ok.example.com", authSecretName: "ACCESS_AUD" }]) {
+      expect((await call(ctx.env, "POST", "/api/v1/probe", body)).status).toBe(400);
+    }
   });
 });

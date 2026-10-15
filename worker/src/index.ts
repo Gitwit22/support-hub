@@ -85,6 +85,7 @@ const dashboardRouteDefs: Array<[string, string, DashboardRoute["handler"]]> = [
     ({ env, params, identity }) => read.resolveIncident(env.DB, params.incidentId, identity),
   ],
   ["GET", "/api/v1/event-log", ({ env, url }) => read.listEvents(env.DB, url)],
+  ["POST", "/api/v1/probe", async ({ env, request }) => registry.probeEndpoint(env, await readJsonBody(request))],
 ];
 
 const dashboardRoutes = dashboardRouteDefs.map(([method, path, handler]) => ({

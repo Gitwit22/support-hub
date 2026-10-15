@@ -1,5 +1,8 @@
 // ---------------------------------------------------------------------------
-// ProgramIntakeWizard — 5-step guided wizard for onboarding a new program.
+// ProgramIntakeWizard — 6-step guided wizard for onboarding a new program.
+// Saving registers the program with the monitoring backend (application,
+// environment, health checks, telemetry key) before it joins the local
+// program list, so a program in the switcher is always really monitored.
 // ---------------------------------------------------------------------------
 
 import { useState, useCallback } from "react";
@@ -21,7 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, XCircle, Loader2, ChevronRight, ChevronLeft, Plus, Trash2 } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, ChevronRight, ChevronLeft, Plus, Trash2, Circle, Copy, AlertTriangle } from "lucide-react";
 import type {
   ProgramConfig,
   ProgramCapabilities,
@@ -31,6 +34,21 @@ import type {
   UsageItem,
 } from "@/lib/types/program";
 import { useProgram } from "@/lib/programs/ProgramContext";
+import {
+  APPLICATION_ID_PATTERN,
+  SECRET_NAME_PATTERN,
+  OnboardingError,
+  isHttpsUrl,
+  joinUrl,
+  onboardProgram,
+  probeEndpoint,
+  suggestSecretName,
+  toMonitoringEnvironment,
+  type OnboardingProgress,
+  type OnboardingResult,
+  type OnboardingStep,
+  type PlannedHealthCheck,
+} from "@/lib/api/monitoring";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -52,10 +70,15 @@ interface WizardState {
   healthEndpoint: string;
   authMethod: AuthMethod;
 
-  // Step 3 — Module Selection
+  // Step 3 — Health Checks (polled by Support Hub)
+  healthChecks: PlannedHealthCheck[];
+  /** Worker secret (HC_*) holding the bearer token for checks that require auth. */
+  authSecretName: string;
+
+  // Step 4 — Module Selection
   capabilities: ProgramCapabilities;
 
-  // Step 4 — Endpoint Mapping (generic categories)
+  // Step 5 — Endpoint Mapping (generic categories)
   endpoints: ProgramEndpoints;
 }
 
@@ -80,6 +103,8 @@ const INITIAL_STATE: WizardState = {
   apiBaseUrl: "",
   healthEndpoint: "/health",
   authMethod: "bearer",
+  healthChecks: [],
+  authSecretName: "",
   capabilities: { ...DEFAULT_CAPABILITIES },
   endpoints: {},
 };
@@ -87,9 +112,18 @@ const INITIAL_STATE: WizardState = {
 const STEPS = [
   "Program Info",
   "API Connection",
+  "Health Checks",
   "Modules",
   "Endpoint Mapping",
   "Save",
+];
+const STEP_HEALTH_CHECKS = 2;
+
+const ONBOARDING_STEPS: { step: OnboardingStep; label: string }[] = [
+  { step: "application", label: "Register application" },
+  { step: "environment", label: "Register environment" },
+  { step: "healthChecks", label: "Add health checks" },
+  { step: "telemetryKey", label: "Issue telemetry key" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -291,7 +325,15 @@ function StepProgramInfo({
           value={state.slug}
           onChange={(e) => onChange({ slug: slugify(e.target.value) })}
         />
-        <p className="text-xs text-muted-foreground">Auto-generated from name. Used in IDs and URLs.</p>
+        {state.slug && !APPLICATION_ID_PATTERN.test(state.slug) ? (
+          <p className="text-xs text-destructive">
+            Must start with a letter and be 2–48 characters of lowercase letters, digits or "-".
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Auto-generated from name. This is the application id the program sends in its telemetry.
+          </p>
+        )}
       </div>
 
       <div className="space-y-1.5">
@@ -402,6 +444,9 @@ function StepApiConnection({
           value={state.apiBaseUrl}
           onChange={(e) => onChange({ apiBaseUrl: e.target.value })}
         />
+        {state.apiBaseUrl.trim() && !isHttpsUrl(state.apiBaseUrl.trim()) && (
+          <p className="text-xs text-destructive">Must be a full https:// URL — Support Hub only polls over https.</p>
+        )}
       </div>
 
       <div className="space-y-1.5">
@@ -413,7 +458,7 @@ function StepApiConnection({
           onChange={(e) => onChange({ healthEndpoint: e.target.value })}
         />
         <p className="text-xs text-muted-foreground">
-          Relative path used to verify connectivity.
+          Relative path used to verify connectivity. Tested from Support Hub's server, the same way it will be polled.
         </p>
       </div>
 
@@ -440,7 +485,7 @@ function StepApiConnection({
           variant="outline"
           size="sm"
           onClick={onTestConnection}
-          disabled={!state.apiBaseUrl || connectionStatus === "testing"}
+          disabled={!isHttpsUrl(state.apiBaseUrl.trim()) || connectionStatus === "testing"}
         >
           {connectionStatus === "testing" && (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -461,6 +506,123 @@ function StepApiConnection({
           </span>
         )}
       </div>
+    </div>
+  );
+}
+
+const CHECK_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/;
+
+function healthCheckErrors(state: WizardState): string[] {
+  const errors: string[] = [];
+  if (state.healthChecks.length === 0) errors.push("Add at least one health check.");
+  const names = new Set<string>();
+  state.healthChecks.forEach((check, index) => {
+    const label = check.name.trim() || `Check ${index + 1}`;
+    if (!CHECK_NAME_PATTERN.test(check.name.trim())) errors.push(`${label}: name must be 1–64 letters, digits, spaces, ".", "_" or "-".`);
+    if (names.has(check.name.trim().toLowerCase())) errors.push(`${label}: names must be unique.`);
+    names.add(check.name.trim().toLowerCase());
+    if (!check.path.trim().startsWith("/")) errors.push(`${label}: path must start with "/".`);
+  });
+  if (state.healthChecks.some((check) => check.requiresAuth) && !SECRET_NAME_PATTERN.test(state.authSecretName)) {
+    errors.push('Secret name must start with "HC_" and use only A–Z, 0–9 and "_".');
+  }
+  return errors;
+}
+
+function StepHealthChecks({
+  state,
+  onChange,
+}: {
+  state: WizardState;
+  onChange: (patch: Partial<WizardState>) => void;
+}) {
+  const update = (index: number, patch: Partial<PlannedHealthCheck>) => {
+    onChange({ healthChecks: state.healthChecks.map((check, i) => (i === index ? { ...check, ...patch } : check)) });
+  };
+  const remove = (index: number) => onChange({ healthChecks: state.healthChecks.filter((_, i) => i !== index) });
+  const add = () => onChange({ healthChecks: [...state.healthChecks, { name: "", path: "/", requiresAuth: false }] });
+  const needsSecret = state.healthChecks.some((check) => check.requiresAuth);
+  const errors = healthCheckErrors(state);
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Support Hub polls each path every minute. A check is up when it answers HTTP 200 within 10 seconds; an
+        endpoint may also report <span className="font-mono">X-Health-Status: degraded</span>.
+      </p>
+
+      <div className="space-y-2">
+        {state.healthChecks.map((check, index) => (
+          <div key={index} className="rounded-md border border-border p-2.5 space-y-2">
+            <div className="flex items-center gap-2">
+              <Input
+                aria-label={`Check ${index + 1} name`}
+                className="h-8 text-sm w-36"
+                placeholder="name, e.g. live"
+                value={check.name}
+                onChange={(e) => update(index, { name: e.target.value })}
+              />
+              <Input
+                aria-label={`Check ${index + 1} path`}
+                className="h-8 text-sm font-mono flex-1"
+                placeholder="/health"
+                value={check.path}
+                onChange={(e) => update(index, { path: e.target.value })}
+              />
+              <button
+                type="button"
+                onClick={() => remove(index)}
+                className="shrink-0 text-muted-foreground hover:text-destructive transition-colors"
+                aria-label={`Remove check ${index + 1}`}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                <Checkbox
+                  aria-label={`Check ${index + 1} requires auth`}
+                  checked={check.requiresAuth}
+                  onCheckedChange={(value) => update(index, { requiresAuth: value === true })}
+                />
+                Requires bearer token
+              </label>
+              {state.apiBaseUrl && check.path.startsWith("/") && (
+                <span className="text-xs text-muted-foreground font-mono truncate">{joinUrl(state.apiBaseUrl, check.path)}</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={add}>
+        <Plus className="h-3.5 w-3.5" />
+        Add Health Check
+      </Button>
+
+      {needsSecret && (
+        <div className="space-y-1.5">
+          <Label htmlFor="hc-secret">Health-check secret name *</Label>
+          <Input
+            id="hc-secret"
+            className="font-mono"
+            value={state.authSecretName}
+            onChange={(e) => onChange({ authSecretName: e.target.value.toUpperCase() })}
+          />
+          <p className="text-xs text-muted-foreground">
+            Name of the Support Hub Worker secret holding the token this program expects. Only the name is stored;
+            set the value with <span className="font-mono">wrangler secret put {state.authSecretName || "HC_…"}</span>.
+          </p>
+        </div>
+      )}
+
+      {errors.length > 0 && state.healthChecks.length > 0 && (
+        <ul className="space-y-0.5 text-xs text-destructive">
+          {errors.map((error) => (
+            <li key={error}>{error}</li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -561,7 +723,8 @@ function StepSave({ state }: { state: WizardState }) {
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
         Review the configuration below and click <strong>Save Program</strong>{" "}
-        to register it in Support Hub.
+        to register it with Support Hub monitoring. Saving registers the application and environment, adds the
+        health checks and issues a telemetry key.
       </p>
 
       <div className="rounded-lg border border-border bg-muted/40 p-4 space-y-2 text-sm">
@@ -594,6 +757,20 @@ function StepSave({ state }: { state: WizardState }) {
         <div className="flex gap-2">
           <span className="w-28 text-muted-foreground">Auth</span>
           <span className="capitalize">{state.authMethod}</span>
+        </div>
+        <div className="flex gap-2">
+          <span className="w-28 text-muted-foreground shrink-0">Health Checks</span>
+          <div className="space-y-0.5 min-w-0">
+            {state.healthChecks.map((check) => (
+              <div key={check.name} className="text-xs">
+                <span className="font-medium">{check.name}</span>{" "}
+                <span className="font-mono text-muted-foreground break-all">{check.path}</span>
+                {check.requiresAuth && (
+                  <Badge variant="outline" className="ml-1 text-[10px] font-mono">{state.authSecretName}</Badge>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
         {state.resourceLabel && (
           <div className="flex gap-2">
@@ -642,48 +819,102 @@ export function ProgramIntakeWizard({ open, onClose }: ProgramIntakeWizardProps)
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("idle");
   const [connectionMessage, setConnectionMessage] = useState("");
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [progress, setProgress] = useState<Partial<Record<OnboardingStep, OnboardingProgress>>>({});
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [result, setResult] = useState<OnboardingResult | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const updateState = useCallback((patch: Partial<WizardState>) => {
     setWizardState((prev) => ({ ...prev, ...patch }));
   }, []);
 
   const handleClose = () => {
+    // The telemetry token is shown once; don't let a stray click lose it.
+    if (result && !copied && !window.confirm("The telemetry key will not be shown again. Close anyway?")) return;
     setStep(0);
     setWizardState(INITIAL_STATE);
     setConnectionStatus("idle");
     setConnectionMessage("");
     setSaved(false);
+    setSaving(false);
+    setProgress({});
+    setSaveError(null);
+    setResult(null);
+    setCopied(false);
     onClose();
   };
 
   const canAdvance = (): boolean => {
-    if (step === 0) return wizardState.name.trim() !== "" && wizardState.slug.trim() !== "";
-    if (step === 1) return wizardState.apiBaseUrl.trim() !== "";
+    if (step === 0) return wizardState.name.trim() !== "" && APPLICATION_ID_PATTERN.test(wizardState.slug);
+    if (step === 1) return isHttpsUrl(wizardState.apiBaseUrl.trim()) && wizardState.healthEndpoint.trim().startsWith("/");
+    if (step === STEP_HEALTH_CHECKS) return healthCheckErrors(wizardState).length === 0;
     return true;
+  };
+
+  const goNext = () => {
+    // Seed the health-check step from the connection step the first time it opens.
+    if (step + 1 === STEP_HEALTH_CHECKS) {
+      setWizardState((prev) => ({
+        ...prev,
+        healthChecks: prev.healthChecks.length
+          ? prev.healthChecks
+          : [{ name: "health", path: prev.healthEndpoint.trim(), requiresAuth: false }],
+        authSecretName: prev.authSecretName || suggestSecretName(prev.slug, prev.environment),
+      }));
+    }
+    setStep((s) => s + 1);
   };
 
   const testConnection = async () => {
     setConnectionStatus("testing");
-    const url = `${wizardState.apiBaseUrl.replace(/\/$/, "")}${wizardState.healthEndpoint}`;
     try {
-      const response = await fetch(url, {
-        method: "GET",
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (response.ok || response.status < 500) {
-        setConnectionStatus("success");
-        setConnectionMessage(`Connected (HTTP ${response.status})`);
-      } else {
+      const probe = await probeEndpoint(joinUrl(wizardState.apiBaseUrl, wizardState.healthEndpoint));
+      if (probe.status === "down") {
         setConnectionStatus("failure");
-        setConnectionMessage(`HTTP ${response.status} — server returned an error`);
+        setConnectionMessage(probe.errorMessage ?? "Endpoint is down");
+      } else {
+        setConnectionStatus("success");
+        setConnectionMessage(
+          `Reachable (HTTP ${probe.httpStatus}, ${probe.latencyMs}ms)${probe.status === "degraded" ? " — reports degraded" : ""}`,
+        );
       }
     } catch (err) {
       setConnectionStatus("failure");
-      setConnectionMessage(err instanceof Error ? err.message : "Connection failed");
+      setConnectionMessage(err instanceof Error ? err.message : "Connection test failed");
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError(null);
+    setProgress({});
+    let onboarding: OnboardingResult;
+    try {
+      onboarding = await onboardProgram(
+        {
+          applicationId: wizardState.slug,
+          name: wizardState.name.trim(),
+          description: wizardState.description.trim() || undefined,
+          environment: toMonitoringEnvironment(wizardState.environment),
+          baseUrl: wizardState.apiBaseUrl.trim().replace(/\/+$/, ""),
+          healthChecks: wizardState.healthChecks.map((check) => ({ ...check, name: check.name.trim(), path: check.path.trim() })),
+          authSecretName: wizardState.healthChecks.some((check) => check.requiresAuth) ? wizardState.authSecretName : undefined,
+          keyLabel: `${wizardState.name.trim()} ${wizardState.environment} (onboarding)`,
+        },
+        (update) => setProgress((prev) => ({ ...prev, [update.step]: update })),
+      );
+    } catch (error) {
+      // Nothing is added to the local registry unless the backend registration completed.
+      setSaveError(
+        error instanceof OnboardingError
+          ? `${ONBOARDING_STEPS.find((s) => s.step === error.step)?.label ?? error.step} failed: ${error.message}`
+          : (error as Error).message,
+      );
+      setSaving(false);
+      return;
+    }
+
     const id = generateId(wizardState.slug, wizardState.environment);
     const config: ProgramConfig = {
       id,
@@ -700,9 +931,33 @@ export function ProgramIntakeWizard({ open, onClose }: ProgramIntakeWizardProps)
       endpoints: wizardState.endpoints,
       usageItems: wizardState.usageItems.length > 0 ? wizardState.usageItems : undefined,
       registeredAt: new Date().toISOString(),
+      monitoring: {
+        applicationId: onboarding.applicationId,
+        environmentId: onboarding.environmentId,
+        telemetryKeyId: onboarding.telemetryKey.id,
+      },
     };
     addProgram(config, true);
+    setResult(onboarding);
+    setSaving(false);
     setSaved(true);
+  };
+
+  const envSnippet = result
+    ? [
+        `SUPPORT_HUB_URL=${window.location.origin}`,
+        `SUPPORT_HUB_TELEMETRY_KEY=${result.telemetryKey.token}`,
+        `SUPPORT_HUB_ENVIRONMENT=${toMonitoringEnvironment(wizardState.environment)}`,
+      ].join("\n")
+    : "";
+
+  const copySnippet = async () => {
+    try {
+      await navigator.clipboard.writeText(envSnippet);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
   };
 
   const progressPct = ((step + 1) / STEPS.length) * 100;
@@ -732,14 +987,44 @@ export function ProgramIntakeWizard({ open, onClose }: ProgramIntakeWizardProps)
 
         {/* Step content */}
         <div className="py-2 max-h-[60vh] overflow-y-auto pr-1">
-          {saved ? (
-            <div className="flex flex-col items-center gap-3 py-6 text-center">
-              <CheckCircle2 className="h-12 w-12 text-emerald-500" />
-              <p className="text-lg font-semibold">{wizardState.name} registered</p>
-              <p className="text-sm text-muted-foreground">
-                The program has been added to the registry and is now active.
-              </p>
-              <Button onClick={handleClose} className="mt-2">Done</Button>
+          {saved && result ? (
+            <div className="space-y-4">
+              <div className="flex flex-col items-center gap-2 py-2 text-center">
+                <CheckCircle2 className="h-10 w-10 text-emerald-500" />
+                <p className="text-lg font-semibold">{wizardState.name} registered</p>
+                <p className="text-sm text-muted-foreground">
+                  Monitoring is set up. Health checks start running within a minute.
+                </p>
+              </div>
+
+              <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100 flex gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>
+                  Copy this now: the telemetry key is shown once and Support Hub stores only its hash. Add these to the
+                  program's server environment (never a browser/<span className="font-mono">VITE_</span> variable).
+                </span>
+              </div>
+
+              <pre data-testid="telemetry-env" className="rounded-md bg-muted p-3 text-xs font-mono whitespace-pre-wrap break-all">
+                {envSnippet}
+              </pre>
+              <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={copySnippet}>
+                <Copy className="h-3.5 w-3.5" />
+                {copied ? "Copied" : "Copy"}
+              </Button>
+
+              {wizardState.healthChecks.some((check) => check.requiresAuth) && (
+                <p className="text-xs text-muted-foreground">
+                  Authenticated checks read Worker secret{" "}
+                  <span className="font-mono">{wizardState.authSecretName}</span>. Until it is set (
+                  <span className="font-mono">wrangler secret put {wizardState.authSecretName}</span>) they report down
+                  with a configuration error.
+                </p>
+              )}
+
+              <div className="flex justify-end">
+                <Button onClick={handleClose}>Done</Button>
+              </div>
             </div>
           ) : (
             <>
@@ -753,9 +1038,43 @@ export function ProgramIntakeWizard({ open, onClose }: ProgramIntakeWizardProps)
                   onTestConnection={testConnection}
                 />
               )}
-              {step === 2 && <StepModules state={wizardState} onChange={updateState} />}
-              {step === 3 && <StepEndpointMapping state={wizardState} onChange={updateState} />}
-              {step === 4 && <StepSave state={wizardState} />}
+              {step === STEP_HEALTH_CHECKS && <StepHealthChecks state={wizardState} onChange={updateState} />}
+              {step === 3 && <StepModules state={wizardState} onChange={updateState} />}
+              {step === 4 && <StepEndpointMapping state={wizardState} onChange={updateState} />}
+              {step === 5 && (
+                <div className="space-y-4">
+                  <StepSave state={wizardState} />
+                  {(saving || saveError || Object.keys(progress).length > 0) && (
+                    <ul className="space-y-1.5 text-sm" aria-label="Registration progress">
+                      {ONBOARDING_STEPS.map(({ step: id, label }) => {
+                        const entry = progress[id];
+                        return (
+                          <li key={id} className="flex items-start gap-2">
+                            {entry?.status === "running" ? (
+                              <Loader2 className="h-4 w-4 mt-0.5 animate-spin text-muted-foreground" />
+                            ) : entry?.status === "done" ? (
+                              <CheckCircle2 className="h-4 w-4 mt-0.5 text-emerald-600" />
+                            ) : entry?.status === "failed" ? (
+                              <XCircle className="h-4 w-4 mt-0.5 text-destructive" />
+                            ) : (
+                              <Circle className="h-4 w-4 mt-0.5 text-muted-foreground/50" />
+                            )}
+                            <span>
+                              {label}
+                              {entry?.detail && <span className="block text-xs text-muted-foreground">{entry.detail}</span>}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                  {saveError && (
+                    <p role="alert" className="text-sm text-destructive">
+                      {saveError} Nothing was added to the program list. Fix the issue and retry — completed steps are reused.
+                    </p>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>
@@ -767,20 +1086,21 @@ export function ProgramIntakeWizard({ open, onClose }: ProgramIntakeWizardProps)
               variant="ghost"
               size="sm"
               onClick={() => setStep((s) => s - 1)}
-              disabled={step === 0}
+              disabled={step === 0 || saving}
             >
               <ChevronLeft className="mr-1 h-4 w-4" />
               Back
             </Button>
 
             {step < STEPS.length - 1 ? (
-              <Button size="sm" onClick={() => setStep((s) => s + 1)} disabled={!canAdvance()}>
+              <Button size="sm" onClick={goNext} disabled={!canAdvance()}>
                 Next
                 <ChevronRight className="ml-1 h-4 w-4" />
               </Button>
             ) : (
-              <Button size="sm" onClick={handleSave}>
-                Save Program
+              <Button size="sm" onClick={handleSave} disabled={saving}>
+                {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {saveError ? "Retry" : "Save Program"}
               </Button>
             )}
           </div>
