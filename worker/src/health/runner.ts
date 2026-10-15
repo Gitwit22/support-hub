@@ -77,6 +77,15 @@ export async function runHealthCheck(check: HealthCheckRow, env: Env): Promise<H
         errorMessage: `Expected HTTP ${check.expected_status}, got ${response.status}`,
       };
     }
+    // Endpoints can report their own verdict (e.g. ClientFlow's /health/dependencies answers
+    // 200 with X-Health-Status: degraded when a pipeline is impaired but requests still work).
+    const reported = response.headers.get("x-health-status")?.trim().toLowerCase();
+    if (reported === "down") {
+      return { status: "down", httpStatus: response.status, latencyMs, errorType: null, errorMessage: "Endpoint reports down" };
+    }
+    if (reported === "degraded") {
+      return { status: "degraded", httpStatus: response.status, latencyMs, errorType: null, errorMessage: "Endpoint reports degraded" };
+    }
     const slow = check.degraded_latency_ms !== null && latencyMs > check.degraded_latency_ms;
     return {
       status: slow ? "degraded" : "up",

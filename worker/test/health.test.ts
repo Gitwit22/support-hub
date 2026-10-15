@@ -73,6 +73,15 @@ describe("single health check execution", () => {
     expect(await runHealthCheck(check(), ctx.env)).toMatchObject({ status: "down", errorType: "network" });
   });
 
+  it("honours an endpoint's own X-Health-Status verdict", async () => {
+    stubFetch(async () => new Response("{}", { status: 200, headers: { "X-Health-Status": "degraded" } }));
+    expect(await runHealthCheck(check(), ctx.env)).toMatchObject({ status: "degraded", httpStatus: 200 });
+    stubFetch(async () => new Response("{}", { status: 200, headers: { "X-Health-Status": "down" } }));
+    expect(await runHealthCheck(check(), ctx.env)).toMatchObject({ status: "down" });
+    stubFetch(async () => new Response("{}", { status: 200, headers: { "X-Health-Status": "ok" } }));
+    expect(await runHealthCheck(check(), ctx.env)).toMatchObject({ status: "up" });
+  });
+
   it("sends the configured secret and reports a missing one as a config failure", async () => {
     const mock = stubFetch(async () => new Response("ok"));
     await runHealthCheck(check({ auth_secret_name: "HC_CLIENTFLOW_PROD" }), ctx.env);
